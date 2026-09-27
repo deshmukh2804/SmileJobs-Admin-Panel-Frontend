@@ -4,7 +4,6 @@ import { BRAND_LOGO } from '../data/mockData';
 import { AdminRole, AdminUser } from '../types';
 import { RAW_API_BASE_URL as API_BASE_URL } from '../services/api';
 
-
 interface LoginViewProps {
   onLoginSuccess: (user: AdminUser, selectedRole?: AdminRole) => void;
 }
@@ -20,8 +19,8 @@ type AuthFlowState =
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [flowState, setFlowState] = useState<AuthFlowState>('login');
 
-  const [email, setEmail] = useState('superadmin@careerflow.com');
-  const [password, setPassword] = useState('SuperAdmin@123');
+  const [email, setEmail] = useState('admin@smilejobs.com');
+  const [password, setPassword] = useState('Admin@123');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -76,23 +75,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }
     return () => clearInterval(timer);
   }, [flowState, lockoutSeconds]);
-
-  const handleQuickCredentials = (roleType: 'super' | 'admin' | 'moderator' | 'finance' | 'content' | 'support') => {
-    setErrorMessage(null);
-    const credentials: Record<string, { email: string; pwd: string }> = {
-      super: { email: 'superadmin@careerflow.com', pwd: 'SuperAdmin@123' },
-      admin: { email: 'admin@careerflow.com', pwd: 'Admin@123' },
-      moderator: { email: 'moderator@careerflow.com', pwd: 'Moderator@123' },
-      finance: { email: 'finance@careerflow.com', pwd: 'Finance@123' },
-      content: { email: 'content@careerflow.com', pwd: 'Content@123' },
-      support: { email: 'support@careerflow.com', pwd: 'Support@123' },
-    };
-    const c = credentials[roleType];
-    if (c) {
-      setEmail(c.email);
-      setPassword(c.pwd);
-    }
-  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,67 +215,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-primary-container/10 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-[#5F8A72]/10 blur-3xl pointer-events-none" />
 
-      {/* Top Quick Credentials Bar (Real DB Accounts) */}
-      <div className="w-full bg-surface-container-low border-b border-surface-variant px-4 py-2 text-xs flex items-center justify-between flex-wrap gap-2 z-20">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[16px] text-primary">key</span>
-          <span className="font-semibold text-primary">Quick Login:</span>
-          <span className="text-outline hidden sm:inline">Populate credentials for real DB accounts:</span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => handleQuickCredentials('super')}
-            className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 hover:bg-purple-200 transition-colors font-medium text-[11px] cursor-pointer"
-          >
-            Super Admin
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickCredentials('admin')}
-            className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 hover:bg-blue-200 transition-colors font-medium text-[11px] cursor-pointer"
-          >
-            Admin
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickCredentials('moderator')}
-            className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200 transition-colors font-medium text-[11px] cursor-pointer"
-          >
-            Moderator
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickCredentials('support')}
-            className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200 transition-colors font-medium text-[11px] cursor-pointer"
-          >
-            Support Agent
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickCredentials('content')}
-            className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-200 transition-colors font-medium text-[11px] cursor-pointer"
-          >
-            Content Manager
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickCredentials('finance')}
-            className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200 hover:bg-teal-200 transition-colors font-medium text-[11px] cursor-pointer"
-          >
-            Finance Manager
-          </button>
-        </div>
-      </div>
-
       {/* Main Container */}
       <div className="flex-1 flex items-center justify-center p-4 sm:p-6 z-10">
         <div className="w-full max-w-md bg-surface-container-lowest border border-surface-variant rounded-2xl shadow-xl p-6 sm:p-8 relative">
           <div className="flex flex-col items-center text-center mb-6">
             <div className="flex items-center gap-2.5 mb-2 cursor-pointer" onClick={() => setFlowState('login')}>
-              <img src={BRAND_LOGO} alt="CareerFlow Brand Logo" className="h-10 w-auto object-contain" />
+              <img src={BRAND_LOGO} alt="SmileJobs Brand Logo" className="h-10 w-auto object-contain" />
               <div className="flex flex-col text-left">
-                <span className="font-label-lg text-primary text-xl font-bold tracking-tight">CareerFlow</span>
+                <span className="font-label-lg text-primary text-xl font-bold tracking-tight">SmileJobs</span>
                 <span className="font-label-sm text-[11px] text-outline leading-none">Enterprise Portal</span>
               </div>
             </div>
@@ -330,7 +259,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@careerflow.com"
+                      placeholder="admin@smilejobs.com"
                       required
                       disabled={isLoading}
                       className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-outline/60"
@@ -585,7 +514,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       type="email"
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="admin@careerflow.com"
+                      placeholder="admin@smilejobs.com"
                       required
                       className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1"
                     />
@@ -667,7 +596,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           )}
 
           <div className="mt-6 pt-4 border-t border-surface-variant flex items-center justify-between text-[10px] text-outline">
-            <span>CareerFlow Admin Engine v3.4</span>
+            <span>SmileJobs Admin Engine v3.4</span>
             <div className="flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[12px] text-[#5F8A72]">verified_user</span>
               <span>TLS 1.3 Secure Connection</span>
@@ -677,7 +606,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       </div>
 
       <footer className="w-full py-3 px-4 text-center text-xs text-outline border-t border-surface-variant bg-surface-container-low/40">
-        © 2026 CareerFlow Inc. Enterprise Administrative Subsystem. All actions are logged and audited.
+        © 2026 SmileJobs Inc. Enterprise Administrative Subsystem. All actions are logged and audited.
       </footer>
     </div>
   );
