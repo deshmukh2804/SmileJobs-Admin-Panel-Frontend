@@ -1,0 +1,6 @@
+{
+  "name": "CareerFlow Admin Portal",
+  "description": "Enterprise administrative portal for CareerFlow with live dashboard metrics, job listing governance, candidate and employer directory, and compliance verification center.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
