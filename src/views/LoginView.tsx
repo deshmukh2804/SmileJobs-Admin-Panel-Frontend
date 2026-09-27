@@ -1,35 +1,27 @@
 // FILE: frontend/src/views/LoginView.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { BRAND_LOGO } from '../data/mockData';
 import { AdminRole, AdminUser } from '../types';
 import { RAW_API_BASE_URL as API_BASE_URL } from '../services/api';
+import SmileJobsLogo from '../assets/smilejobs.png';
 
 interface LoginViewProps {
   onLoginSuccess: (user: AdminUser, selectedRole?: AdminRole) => void;
 }
 
-type AuthFlowState =
-  | 'login'
-  | 'two-factor'
-  | 'forgot-password'
-  | 'forgot-password-sent'
-  | 'locked-out'
-  | 'role-picker';
+type AuthFlowState = 'login' | 'two-factor' | 'locked-out' | 'role-picker';
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [flowState, setFlowState] = useState<AuthFlowState>('login');
 
-  const [email, setEmail] = useState('admin@smilejobs.com');
-  const [password, setPassword] = useState('Admin@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
 
-  const [otpDigits, setOtpDigits] = useState<string[]>(['8', '4', '2', '0', '1', '9']);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [resendTimer, setResendTimer] = useState(30);
   const [otpMethod, setOtpMethod] = useState<'app' | 'sms'>('app');
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  const [forgotEmail, setForgotEmail] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -38,7 +30,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [pendingUser, setPendingUser] = useState<AdminUser | null>(null);
   const [lockoutSeconds, setLockoutSeconds] = useState(15 * 60);
 
-  // Map backend role string to frontend AdminRole type
   const mapRole = (backendRole: string): AdminRole => {
     const validRoles: AdminRole[] = [
       'Super Admin',
@@ -49,7 +40,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       'Finance Manager',
     ];
     if (validRoles.includes(backendRole as AdminRole)) return backendRole as AdminRole;
-    // Legacy mapping fallbacks
     const normalized = backendRole.toLowerCase().replace(/[_-]/g, ' ').trim();
     if (normalized === 'super admin' || normalized === 'superadmin') return 'Super Admin';
     if (normalized === 'admin') return 'Admin';
@@ -116,7 +106,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         return;
       }
 
-      // Write JWT reference to BOTH standard expected keys to prevent 401 token authentication errors
       localStorage.setItem('token', data.token);
       localStorage.setItem('adminToken', data.token);
       localStorage.setItem('adminInfo', JSON.stringify(data.admin));
@@ -142,7 +131,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     } catch (error) {
       setIsLoading(false);
       setErrorMessage(
-        `Could not connect to the Backend Authentication Service at: ${API_BASE_URL}. Ensure your server is running.`
+        `Could not connect to the Backend Authentication Service. Please ensure your server is running.`
       );
     }
   };
@@ -188,22 +177,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleForgotPasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
-      setErrorMessage('Please enter a valid corporate email address.');
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      setFlowState('forgot-password-sent');
-    }, 700);
-  };
-
   const formatLockoutTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -211,39 +184,65 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafaf5] text-[#1a1c19] flex flex-col justify-between select-none relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#fafaf5] text-[#1a1c19] flex flex-col select-none relative overflow-x-hidden">
+      {/* Decorative Background Blobs */}
       <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-primary-container/10 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-[#5F8A72]/10 blur-3xl pointer-events-none" />
 
       {/* Main Container */}
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 z-10">
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 z-10">
         <div className="w-full max-w-md bg-surface-container-lowest border border-surface-variant rounded-2xl shadow-xl p-6 sm:p-8 relative">
-          <div className="flex flex-col items-center text-center mb-6">
-            <div className="flex items-center gap-2.5 mb-2 cursor-pointer" onClick={() => setFlowState('login')}>
-              <img src={BRAND_LOGO} alt="SmileJobs Brand Logo" className="h-10 w-auto object-contain" />
-              <div className="flex flex-col text-left">
-                <span className="font-label-lg text-primary text-xl font-bold tracking-tight">SmileJobs</span>
-                <span className="font-label-sm text-[11px] text-outline leading-none">Enterprise Portal</span>
-              </div>
+          
+          {/* ============================= */}
+          {/* Brand Header (Logo + Title) */}
+          {/* ============================= */}
+          <div className="flex flex-col items-center text-center mb-8">
+            {/* Circular Logo */}
+            <div
+              onClick={() => setFlowState('login')}
+              className="w-20 h-20 rounded-full bg-white border-4 border-primary-container/40 shadow-lg flex items-center justify-center overflow-hidden cursor-pointer hover:scale-105 transition-transform mb-4"
+            >
+              <img
+                src={SmileJobsLogo}
+                alt="SmileJobs Brand Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-surface-container text-outline text-[11px] font-semibold border border-outline-variant">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#5F8A72]" />
+            
+            {/* Brand Name & Tagline */}
+            <div className="flex flex-col items-center">
+              <h1 className="text-2xl font-bold tracking-tight text-primary leading-tight">
+                SmileJobs
+              </h1>
+              <p className="text-[12px] text-outline mt-0.5 font-medium tracking-wide">
+                Enterprise Portal
+              </p>
+            </div>
+            
+            {/* Certification Badge */}
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container text-outline text-[11px] font-semibold border border-outline-variant mt-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#5F8A72] animate-pulse" />
               SOC2 Type II &amp; ISO-27001 Certified
             </div>
           </div>
 
+          {/* ============================= */}
+          {/* LOGIN VIEW */}
+          {/* ============================= */}
           {flowState === 'login' && (
-            <div className="space-y-5 animate-fade-in">
+            <div className="space-y-6 animate-fade-in">
               <div className="text-center">
-                <h2 className="text-xl font-bold text-primary">Administrator Sign In</h2>
-                <p className="text-xs text-on-surface-variant mt-1">
-                  Enter credentials to access your secure workspace.
+                <h2 className="text-lg font-bold text-primary">Administrator Sign In</h2>
+                <p className="text-xs text-on-surface-variant mt-1.5">
+                  Enter your credentials to access your secure workspace.
                 </p>
               </div>
 
               {errorMessage && (
                 <div className="p-3 rounded-xl bg-error-container/30 border border-error-container text-on-error-container text-xs flex items-start gap-2.5 animate-fade-in">
-                  <span className="material-symbols-outlined text-[18px] text-error shrink-0 mt-0.5">error</span>
+                  <span className="material-symbols-outlined text-[18px] text-error shrink-0 mt-0.5">
+                    error
+                  </span>
                   <div>
                     <p className="font-semibold text-error">Authentication Failed</p>
                     <p className="mt-0.5 text-on-surface-variant">{errorMessage}</p>
@@ -252,48 +251,47 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               )}
 
               <form onSubmit={handleLoginSubmit} className="space-y-4">
+                {/* Email Input */}
                 <div>
-                  <label className="block text-xs font-semibold text-primary mb-1.5">Corporate Email Address</label>
+                  <label className="block text-xs font-semibold text-primary mb-1.5">
+                    Corporate Email Address
+                  </label>
                   <div className="relative">
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@smilejobs.com"
+                      placeholder="Enter your email"
                       required
+                      autoComplete="off"
                       disabled={isLoading}
                       className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-outline/60"
                     />
-                    <span className="material-symbols-outlined text-[18px] text-outline absolute left-2.5 top-3">mail</span>
+                    <span className="material-symbols-outlined text-[18px] text-outline absolute left-2.5 top-3">
+                      mail
+                    </span>
                   </div>
                 </div>
 
+                {/* Password Input */}
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-primary font-bold">Password</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotEmail(email);
-                        setErrorMessage(null);
-                        setFlowState('forgot-password');
-                      }}
-                      className="text-xs text-primary hover:underline font-semibold cursor-pointer"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
+                  <label className="block text-xs font-semibold text-primary mb-1.5">
+                    Password
+                  </label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder="Enter your password"
                       required
+                      autoComplete="new-password"
                       disabled={isLoading}
-                      className="w-full pl-9 pr-10 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      className="w-full pl-9 pr-10 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-outline/60"
                     />
-                    <span className="material-symbols-outlined text-[18px] text-outline absolute left-2.5 top-3">lock</span>
+                    <span className="material-symbols-outlined text-[18px] text-outline absolute left-2.5 top-3">
+                      lock
+                    </span>
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
@@ -307,7 +305,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
+                {/* Remember Me */}
+                <div className="flex items-center pt-1">
                   <label className="flex items-center gap-2 text-xs text-on-surface-variant cursor-pointer">
                     <input
                       type="checkbox"
@@ -319,6 +318,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   </label>
                 </div>
 
+                {/* Submit Button */}
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -346,6 +346,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
+          {/* ============================= */}
+          {/* TWO-FACTOR VIEW */}
+          {/* ============================= */}
           {flowState === 'two-factor' && (
             <div className="space-y-5 animate-fade-in">
               <div className="text-center">
@@ -353,9 +356,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <span className="material-symbols-outlined text-[26px]">phonelink_lock</span>
                 </div>
                 <h2 className="text-xl font-bold text-primary">Two-Factor Authentication</h2>
-                <p className="text-xs text-on-surface-variant mt-1">
+                <p className="text-xs text-on-surface-variant mt-1.5">
                   High-privilege account. Enter code from your{' '}
-                  <strong className="text-primary">{otpMethod === 'app' ? 'Authenticator App' : 'SMS'}</strong>.
+                  <strong className="text-primary">
+                    {otpMethod === 'app' ? 'Authenticator App' : 'SMS'}
+                  </strong>.
                 </p>
               </div>
 
@@ -370,7 +375,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <button
                   type="button"
                   onClick={() => setOtpMethod('app')}
-                  className={`flex-1 py-1 rounded font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  className={`flex-1 py-1.5 rounded font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer ${
                     otpMethod === 'app'
                       ? 'bg-surface-container-lowest text-primary shadow-xs font-semibold'
                       : 'text-outline hover:text-on-surface'
@@ -382,7 +387,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <button
                   type="button"
                   onClick={() => setOtpMethod('sms')}
-                  className={`flex-1 py-1 rounded font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  className={`flex-1 py-1.5 rounded font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer ${
                     otpMethod === 'sms'
                       ? 'bg-surface-container-lowest text-primary shadow-xs font-semibold'
                       : 'text-outline hover:text-on-surface'
@@ -454,6 +459,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
+          {/* ============================= */}
+          {/* ROLE PICKER VIEW */}
+          {/* ============================= */}
           {flowState === 'role-picker' && pendingUser && (
             <div className="space-y-4 animate-fade-in">
               <div className="text-center">
@@ -461,7 +469,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <span className="material-symbols-outlined text-[26px]">switch_account</span>
                 </div>
                 <h2 className="text-xl font-bold text-primary">Continue as…</h2>
-                <p className="text-xs text-on-surface-variant mt-1">
+                <p className="text-xs text-on-surface-variant mt-1.5">
                   Your account holds multiple administrative roles. Select which view to launch:
                 </p>
               </div>
@@ -482,7 +490,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       </div>
                       <div>
                         <span className="font-semibold text-primary text-sm block">{role}</span>
-                        <span className="text-[11px] text-outline block">Launch administrative workspace</span>
+                        <span className="text-[11px] text-outline block">
+                          Launch administrative workspace
+                        </span>
                       </div>
                     </div>
                     <span className="material-symbols-outlined text-[18px] text-outline group-hover:text-primary transition-colors">
@@ -494,75 +504,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {flowState === 'forgot-password' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
-                  <span className="material-symbols-outlined text-[26px]">lock_reset</span>
-                </div>
-                <h2 className="text-xl font-bold text-primary">Reset Password</h2>
-                <p className="text-xs text-on-surface-variant mt-1">
-                  Enter your corporate email. We'll send single-use recovery link instructions.
-                </p>
-              </div>
-
-              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-primary mb-1.5">Registered Corporate Email</label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="admin@smilejobs.com"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1"
-                    />
-                    <span className="material-symbols-outlined text-[18px] text-outline absolute left-2.5 top-3">mail</span>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 px-4 rounded-lg bg-primary-container text-on-secondary font-semibold hover:bg-primary flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>Send Recovery Instructions</span>
-                  <span className="material-symbols-outlined text-[18px]">send</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFlowState('login')}
-                  className="w-full text-center text-xs text-outline hover:text-primary py-1 cursor-pointer font-semibold"
-                >
-                  ← Return to Sign In
-                </button>
-              </form>
-            </div>
-          )}
-
-          {flowState === 'forgot-password-sent' && (
-            <div className="space-y-4 text-center animate-fade-in">
-              <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto border border-emerald-200">
-                <span className="material-symbols-outlined text-[32px]">mark_email_read</span>
-              </div>
-              <h2 className="text-xl font-bold text-primary">Instructions Dispatched</h2>
-              <p className="text-xs text-on-surface-variant">
-                If an account exists for <strong className="text-primary font-mono">{forgotEmail}</strong>, password
-                reset details are on the way.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => setFlowState('login')}
-                className="w-full py-2.5 rounded-lg bg-primary-container text-on-secondary font-semibold hover:bg-primary cursor-pointer shadow-xs"
-              >
-                Back to Sign In
-              </button>
-            </div>
-          )}
-
+          {/* ============================= */}
+          {/* LOCKED OUT VIEW */}
+          {/* ============================= */}
           {flowState === 'locked-out' && (
             <div className="space-y-4 text-center animate-fade-in">
               <div className="w-14 h-14 rounded-full bg-error-container text-on-error-container flex items-center justify-center mx-auto border border-error/30">
@@ -595,16 +539,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          <div className="mt-6 pt-4 border-t border-surface-variant flex items-center justify-between text-[10px] text-outline">
+          {/* Footer Info */}
+          <div className="mt-8 pt-4 border-t border-surface-variant flex items-center justify-between text-[10px] text-outline">
             <span>SmileJobs Admin Engine v3.4</span>
             <div className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[12px] text-[#5F8A72]">verified_user</span>
+              <span className="material-symbols-outlined text-[12px] text-[#5F8A72]">
+                verified_user
+              </span>
               <span>TLS 1.3 Secure Connection</span>
             </div>
           </div>
         </div>
-      </div>
+      </main>
 
+      {/* Global Footer */}
       <footer className="w-full py-3 px-4 text-center text-xs text-outline border-t border-surface-variant bg-surface-container-low/40">
         © 2026 SmileJobs Inc. Enterprise Administrative Subsystem. All actions are logged and audited.
       </footer>
