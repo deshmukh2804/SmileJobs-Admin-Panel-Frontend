@@ -22,6 +22,8 @@ import { RolesPermissionsView } from './views/RolesPermissionsView';
 import { BottomNavConfigView } from './views/BottomNavConfigView';
 import { NotificationsView } from './views/NotificationsView';
 import { PlaceholderView } from './views/PlaceholderView';
+import { PaymentsBillingView } from './views/PaymentsBillingView';
+import { SubscriptionManagementView } from './views/SubscriptionManagementView';
 
 import { INITIAL_JOBS, INITIAL_USERS, INITIAL_VERIFICATIONS } from './data/mockData';
 import { jobApi, adminApi, dashboardApi, API_BASE_URL } from './services/api';
@@ -60,7 +62,6 @@ export default function App() {
   const [jobs, setJobs] = useState<JobItem[]>(INITIAL_JOBS);
   const [users, setUsers] = useState<UserItem[]>(INITIAL_USERS);
 
-  // Kept for DashboardView compatibility (dashboard still uses mock verifications preview)
   const [verifications] = useState<VerificationItem[]>(INITIAL_VERIFICATIONS);
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -74,9 +75,6 @@ export default function App() {
   const [jobsRefreshKey, setJobsRefreshKey] = useState(0);
   const [postJobFormKey, setPostJobFormKey] = useState(0);
 
-  // ═══════════════════════════════════════════════════════════
-  // REAL-TIME SIDEBAR COUNTS (populated from dashboard API)
-  // ═══════════════════════════════════════════════════════════
   const [sidebarCounts, setSidebarCounts] = useState<SidebarCounts>(INITIAL_SIDEBAR_COUNTS);
 
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'error' } | null>(null);
@@ -261,9 +259,6 @@ export default function App() {
     }
   }, []);
 
-  // ═══════════════════════════════════════════════════════════
-  // REFRESH SIDEBAR COUNTS FROM DASHBOARD API (real-time)
-  // ═══════════════════════════════════════════════════════════
   const refreshSidebarCounts = useCallback(async () => {
     try {
       const res = await dashboardApi.getStats();
@@ -297,16 +292,9 @@ export default function App() {
     if (currentUser) refreshJobs();
   }, [currentUser, refreshJobs]);
 
-  // ═══════════════════════════════════════════════════════════
-  // AUTO-REFRESH SIDEBAR COUNTS EVERY 60 SECONDS
-  // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!currentUser) return;
-
-    // Initial load
     refreshSidebarCounts();
-
-    // Poll every 60 seconds for live updates
     const interval = setInterval(refreshSidebarCounts, 60000);
     return () => clearInterval(interval);
   }, [currentUser, refreshSidebarCounts]);
@@ -335,13 +323,6 @@ export default function App() {
             permissions: res.admin.permissions || [],
             landingPage: res.admin.landingPage || 'dashboard',
           };
-
-          console.log('🔄 [SESSION RESTORE]', {
-            email: restoredUser.email,
-            role: restoredUser.activeRole,
-            permissions: restoredUser.permissions,
-            landingPage: restoredUser.landingPage,
-          });
 
           setCurrentUser(restoredUser);
           setCurrentTab(res.admin.landingPage || ROLE_DEFAULT_TABS[res.admin.role] || 'dashboard');
@@ -380,13 +361,6 @@ export default function App() {
           landingPage: meRes.admin.landingPage || 'dashboard',
         };
 
-        console.log('✅ [LOGIN SUCCESS - fetched fresh /me]', {
-          email: fullUser.email,
-          role: fullUser.activeRole,
-          permissions: fullUser.permissions,
-          landingPage: fullUser.landingPage,
-        });
-
         setCurrentUser(fullUser);
         const landing =
           fullUser.landingPage ||
@@ -408,7 +382,6 @@ export default function App() {
       permissions: user.permissions || [],
       landingPage: user.landingPage || 'dashboard',
     };
-    console.log('⚠️ [LOGIN SUCCESS - fallback]', fallbackUser);
     setCurrentUser(fallbackUser);
     setCurrentTab((fallbackUser.landingPage as NavItem) || 'dashboard');
     showToast(`Signed in as ${user.name} (${activeRole})`, 'success');
@@ -498,8 +471,6 @@ export default function App() {
 
   const handleDeleteJob = async (id: string) => {
     setJobs((prev) => prev.filter((job) => job.id !== id));
-    showToast('Job listing deleted successfully!', 'success');
-    await refreshJobs();
     await refreshSidebarCounts();
   };
 
@@ -547,7 +518,6 @@ export default function App() {
     refreshSidebarCounts();
   };
 
-  // Dashboard preview "verify" action — quick approve badge notification
   const handleDashboardVerifyEntity = (_id: string, name: string) => {
     showToast(`Approved credentials & issued verified badge for "${name}"!`);
     refreshSidebarCounts();
@@ -605,19 +575,6 @@ export default function App() {
     setCurrentTab(landing);
   }, [currentUser, currentTab, isTabPermitted, permittedTabs]);
 
-  useEffect(() => {
-    if (currentUser) {
-      console.log('🔐 [Permissions]', {
-        email: currentUser.email,
-        role: currentUser.activeRole,
-        permissions: currentUser.permissions,
-        permittedTabs,
-        currentTab,
-        isTabPermitted,
-      });
-    }
-  }, [currentUser, permittedTabs, currentTab, isTabPermitted]);
-
   if (!currentUser) {
     return (
       <>
@@ -674,12 +631,20 @@ export default function App() {
                 onSelectTab={(tab) => setCurrentTab(tab)}
                 onVerifyEntity={(id, name) => handleDashboardVerifyEntity(id, name)}
                 onInspectEntity={(_id) => {
-                  // Navigate to verification tab; the new view auto-loads real data from backend
                   setCurrentTab('verification');
                 }}
                 onExportReport={() => handleExportData('Platform_Overview')}
               />
             )}
+
+            {currentTab === 'payments-and-billing' && (
+              <PaymentsBillingView
+                onToast={(msg, type) => showToast(msg, type || 'success')}
+              />
+            )}
+
+            {/* ⚡ NEW: MANAGE SUBSCRIPTIONS TAB */}
+            {currentTab === 'manage-subscriptions' && <SubscriptionManagementView />}
 
             {currentTab === 'jobs' &&
               (postJobMode !== 'closed' ? (
@@ -706,20 +671,13 @@ export default function App() {
                 />
               ))}
 
-            {/* Segregated and fully interactive routing tabs */}
             {currentTab === 'candidates' && <CandidatesView />}
             {currentTab === 'recruiters' && <RecruitersView />}
 
-            {/* ═══════════════════════════════════════════════════════
-                VERIFICATION — Now fully self-contained.
-                Fetches real data from recruiter_db/verifications.
-                Auto-syncs sidebar counts after every action.
-                ═══════════════════════════════════════════════════════ */}
             {currentTab === 'verification' && (
               <VerificationView
                 onToast={(msg, type) => {
                   showToast(msg, type);
-                  // Any verification action (approve/reject/re-upload) refreshes sidebar counts
                   refreshSidebarCounts();
                 }}
               />
@@ -742,6 +700,8 @@ export default function App() {
               'roles-and-permissions',
               'bottom-nav-config',
               'notifications',
+              'payments-and-billing',
+              'manage-subscriptions',
             ].includes(currentTab) && (
               <PlaceholderView tab={currentTab} onSelectTab={(tab) => setCurrentTab(tab)} />
             )}

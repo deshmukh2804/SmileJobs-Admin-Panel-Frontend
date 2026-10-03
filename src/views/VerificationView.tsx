@@ -1,5 +1,5 @@
 // FILE: frontend/src/views/VerificationView.tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { verificationApi } from '../services/api';
 import {
   VerificationListItem,
@@ -11,7 +11,6 @@ import {
 
 interface VerificationViewProps {
   onToast?: (msg: string, type?: 'success' | 'info' | 'error') => void;
-  // Backward compatibility with previous App.tsx props
   verifications?: any[];
   selectedId?: string;
   onSelectEntity?: (id: string) => void;
@@ -25,6 +24,11 @@ const STATUS_CONFIG: Record<
   string,
   { label: string; badge: string; dot: string }
 > = {
+  not_submitted: {
+    label: 'Not Submitted',
+    badge: 'bg-gray-100 text-gray-700 border-gray-300',
+    dot: 'bg-gray-400',
+  },
   pending: {
     label: 'Pending Review',
     badge: 'bg-[#FFF3D6] text-[#8C5D00] border-[#F5C77E]',
@@ -90,7 +94,6 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  // Default to 'all' so that existing records in any status are immediately visible
   const [statusFilter, setStatusFilter] = useState<'all' | VerificationStatus>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
@@ -102,7 +105,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
   const [rejectModal, setRejectModal] = useState<boolean>(false);
   const [clarifyModal, setClarifyModal] = useState<boolean>(false);
   const [approveModal, setApproveModal] = useState<boolean>(false);
-  const [fullscreenDoc, setFullscreenDoc] = useState<string | null>(null);
+  const [fullscreenDoc, setFullscreenDoc] = useState<{ url: string; isPdf: boolean } | null>(null);
 
   // Modal Form Inputs
   const [rejectReason, setRejectReason] = useState<string>('');
@@ -116,6 +119,10 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
   const [zoom, setZoom] = useState<number>(1);
   const [rotation, setRotation] = useState<number>(0);
 
+  // Cache detail records so switching between them is instant
+  const detailCacheRef = useRef<Map<string, VerificationDetail>>(new Map());
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -125,7 +132,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch Stats
+  // Fetch Stats (silent - runs in background)
   const fetchStats = useCallback(async () => {
     try {
       const res = await verificationApi.getStats();
@@ -138,52 +145,87 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
   }, []);
 
   // Fetch List
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await verificationApi.getVerifications({
-        status: statusFilter,
-        search: debouncedSearch,
-        page,
-        limit: 20,
-        sort,
-      });
+  const fetchList = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      setError('');
+      try {
+        const res = await verificationApi.getVerifications({
+          status: statusFilter,
+          search: debouncedSearch,
+          page,
+          limit: 20,
+          sort,
+        });
 
-      if (res && res.success) {
-        const fetchedItems: VerificationListItem[] = Array.isArray(res.data) ? res.data : [];
-        setItems(fetchedItems);
-        setTotalPages(res.pagination?.totalPages || 1);
+        if (res && res.success) {
+          const fetchedItems: VerificationListItem[] = Array.isArray(res.data) ? res.data : [];
+          setItems(fetchedItems);
+          setTotalPages(res.pagination?.totalPages || 1);
 
-        // Auto-select first item if current selection not found
-        if (fetchedItems.length > 0) {
-          setSelectedId((prev) => {
-            const exists = prev && fetchedItems.some((i) => i.id === prev);
-            return exists ? prev : fetchedItems[0].id;
-          });
+          // Auto-select first item if current selection not found
+          if (fetchedItems.length > 0) {
+            setSelectedId((prev) => {
+              const exists = prev && fetchedItems.some((i) => i.id === prev);
+              return exists ? prev : fetchedItems[0].id;
+            });
+          } else {
+            setSelectedId(null);
+            setDetail(null);
+          }
         } else {
-          setSelectedId(null);
-          setDetail(null);
+          throw new Error(res?.message || 'Failed to load verification list');
         }
-      } else {
-        throw new Error(res?.message || 'Failed to load verification list');
+      } catch (err: any) {
+        console.error('Fetch verification list error:', err);
+        setError(err?.message || 'Failed to connect to verification service');
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (err: any) {
-      console.error('Fetch verification list error:', err);
-      setError(err?.message || 'Failed to connect to verification service');
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, debouncedSearch, page, sort]);
+    },
+    [statusFilter, debouncedSearch, page, sort]
+  );
 
-  // Fetch Detail
+  // Fetch Detail with caching
   const fetchDetail = useCallback(
-    async (id: string) => {
+    async (id: string, forceRefresh = false) => {
       if (!id) return;
+
+      // Use cache for instant switch
+      if (!forceRefresh && detailCacheRef.current.has(id)) {
+        const cached = detailCacheRef.current.get(id)!;
+        setDetail(cached);
+        setActiveDocIdx(0);
+        setZoom(1);
+        setRotation(0);
+        setDetailLoading(false);
+
+        // Refresh in background silently
+        (async () => {
+          try {
+            const res = await verificationApi.getVerificationById(id);
+            if (res && res.success && res.data) {
+              detailCacheRef.current.set(id, res.data);
+              setDetail((prev) => (prev?.id === id ? res.data : prev));
+            }
+          } catch {
+            /* silent */
+          }
+        })();
+        return;
+      }
+
+      // Cancel any in-flight request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
       setDetailLoading(true);
       try {
         const res = await verificationApi.getVerificationById(id);
         if (res && res.success && res.data) {
+          detailCacheRef.current.set(id, res.data);
           setDetail(res.data);
           setActiveDocIdx(0);
           setZoom(1);
@@ -192,8 +234,10 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
           throw new Error(res?.message || 'Verification details not found');
         }
       } catch (err: any) {
-        console.error('Fetch detail error:', err);
-        onToast?.(err?.message || 'Failed to load document details', 'error');
+        if (err?.name !== 'AbortError') {
+          console.error('Fetch detail error:', err);
+          onToast?.(err?.message || 'Failed to load document details', 'error');
+        }
       } finally {
         setDetailLoading(false);
       }
@@ -218,6 +262,25 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
     }
   }, [selectedId, fetchDetail]);
 
+  // Optimistic update helper (updates list & detail without reload)
+  const applyOptimisticUpdate = useCallback((id: string, updates: Partial<VerificationDetail>) => {
+    setDetail((prev) => (prev && prev.id === id ? { ...prev, ...updates } : prev));
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: (updates.status as any) || item.status,
+              reviewedBy: (updates as any).reviewedBy || item.reviewedBy,
+              reviewedAt: (updates as any).reviewedAt || item.reviewedAt,
+            }
+          : item
+      )
+    );
+    // Invalidate cache for this id
+    detailCacheRef.current.delete(id);
+  }, []);
+
   // ─── ACTION HANDLERS ─────────────────────────────────────────
   const handleApprove = async () => {
     if (!detail) return;
@@ -225,12 +288,17 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
     try {
       const res = await verificationApi.approveVerification(detail.id, approveNotes);
       if (res && res.success) {
-        onToast?.(`✓ "${detail.title}" has been approved and verified!`, 'success');
+        onToast?.(`✓ "${detail.title}" approved & verified! Email sent to ${detail.recruiter?.email}`, 'success');
         setApproveModal(false);
         setApproveNotes('');
-        await fetchList();
-        await fetchStats();
-        await fetchDetail(detail.id);
+        applyOptimisticUpdate(detail.id, {
+          status: 'approved',
+          reviewedAt: new Date().toISOString(),
+          rejectionReason: '',
+        } as any);
+        // Refresh stats & detail silently in background
+        fetchStats();
+        fetchDetail(detail.id, true);
       }
     } catch (err: any) {
       onToast?.(err?.message || 'Approval action failed', 'error');
@@ -249,13 +317,17 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
     try {
       const res = await verificationApi.rejectVerification(detail.id, rejectReason, rejectNotes);
       if (res && res.success) {
-        onToast?.(`Verification for "${detail.title}" rejected. Notification dispatched.`, 'info');
+        onToast?.(`Rejected. Email sent to ${detail.recruiter?.email}`, 'info');
         setRejectModal(false);
+        applyOptimisticUpdate(detail.id, {
+          status: 'rejected',
+          rejectionReason: rejectReason,
+          reviewedAt: new Date().toISOString(),
+        } as any);
         setRejectReason('');
         setRejectNotes('');
-        await fetchList();
-        await fetchStats();
-        await fetchDetail(detail.id);
+        fetchStats();
+        fetchDetail(detail.id, true);
       }
     } catch (err: any) {
       onToast?.(err?.message || 'Rejection action failed', 'error');
@@ -274,13 +346,18 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
     try {
       const res = await verificationApi.requestClarification(detail.id, clarifyDocs, clarifyMessage);
       if (res && res.success) {
-        onToast?.(`Re-upload request emailed to ${detail.recruiter?.email || 'recruiter'}.`, 'info');
+        onToast?.(`Re-upload request sent to ${detail.recruiter?.email}`, 'info');
         setClarifyModal(false);
+        applyOptimisticUpdate(detail.id, {
+          status: 'clarification_requested',
+          clarificationDocs: clarifyDocs,
+          clarificationMessage: clarifyMessage,
+          reviewedAt: new Date().toISOString(),
+        } as any);
         setClarifyDocs([]);
         setClarifyMessage('');
-        await fetchList();
-        await fetchStats();
-        await fetchDetail(detail.id);
+        fetchStats();
+        fetchDetail(detail.id, true);
       }
     } catch (err: any) {
       onToast?.(err?.message || 'Failed to submit clarification request', 'error');
@@ -309,6 +386,10 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
     document.body.removeChild(link);
   };
 
+  const openFullscreen = (url: string, isPdf: boolean) => {
+    setFullscreenDoc({ url, isPdf });
+  };
+
   return (
     <div className="space-y-space-lg">
       {/* ─── TOP HEADER ─── */}
@@ -333,9 +414,10 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
+              detailCacheRef.current.clear();
               fetchList();
               fetchStats();
-              if (selectedId) fetchDetail(selectedId);
+              if (selectedId) fetchDetail(selectedId, true);
             }}
             disabled={loading}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary font-bold shadow-sm hover:opacity-90 transition-all text-sm disabled:opacity-50 cursor-pointer"
@@ -476,7 +558,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
               <span className="material-symbols-outlined text-[36px] text-red-500">error</span>
               <p className="text-xs text-red-800 font-semibold mt-1">{error}</p>
               <button
-                onClick={fetchList}
+                onClick={() => fetchList()}
                 className="mt-3 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700"
               >
                 Retry
@@ -579,7 +661,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
 
         {/* RIGHT COLUMN: Interactive Document & Company Workspace */}
         <div className="lg:col-span-7 lg:sticky lg:top-20 space-y-4">
-          {detailLoading ? (
+          {detailLoading && !detail ? (
             <div className="bg-surface-container-lowest p-12 rounded-xl border border-surface-variant flex flex-col items-center justify-center min-h-[420px]">
               <span className="material-symbols-outlined text-[42px] text-primary animate-spin">
                 progress_activity
@@ -716,39 +798,43 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
 
                   {activeDoc && (
                     <div className="flex items-center gap-1">
+                      {activeDoc.isImage && (
+                        <>
+                          <button
+                            onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                            className="p-1 rounded hover:bg-surface-container text-outline"
+                            title="Zoom Out"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">zoom_out</span>
+                          </button>
+                          <span className="text-[10px] font-mono text-outline w-9 text-center">
+                            {Math.round(zoom * 100)}%
+                          </span>
+                          <button
+                            onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
+                            className="p-1 rounded hover:bg-surface-container text-outline"
+                            title="Zoom In"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">zoom_in</span>
+                          </button>
+                          <button
+                            onClick={() => setRotation((r) => (r + 90) % 360)}
+                            className="p-1 rounded hover:bg-surface-container text-outline"
+                            title="Rotate 90deg"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">rotate_right</span>
+                          </button>
+                        </>
+                      )}
                       <button
-                        onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
-                        className="p-1 rounded hover:bg-surface-container text-outline"
-                        title="Zoom Out"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">zoom_out</span>
-                      </button>
-                      <span className="text-[10px] font-mono text-outline w-9 text-center">
-                        {Math.round(zoom * 100)}%
-                      </span>
-                      <button
-                        onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
-                        className="p-1 rounded hover:bg-surface-container text-outline"
-                        title="Zoom In"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">zoom_in</span>
-                      </button>
-                      <button
-                        onClick={() => setRotation((r) => (r + 90) % 360)}
-                        className="p-1 rounded hover:bg-surface-container text-outline"
-                        title="Rotate 90deg"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">rotate_right</span>
-                      </button>
-                      <button
-                        onClick={() => setFullscreenDoc(activeDoc.url)}
+                        onClick={() => openFullscreen(activeDoc.url, !!(activeDoc as any).isPdf)}
                         className="p-1 rounded hover:bg-surface-container text-outline"
                         title="Fullscreen"
                       >
                         <span className="material-symbols-outlined text-[16px]">fullscreen</span>
                       </button>
                       <button
-                        onClick={() => downloadDoc(activeDoc.url, activeDoc.docName)}
+                        onClick={() => downloadDoc((activeDoc as any).downloadUrl || activeDoc.url, activeDoc.docName)}
                         className="p-1 rounded hover:bg-surface-container text-outline"
                         title="Download Document"
                       >
@@ -764,6 +850,11 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {detail.documents.map((doc, idx) => {
                         const isDocActive = activeDocIdx === idx;
+                        const iconType = (doc as any).isPdf
+                          ? 'picture_as_pdf'
+                          : doc.isImage
+                          ? 'image'
+                          : 'description';
                         return (
                           <button
                             key={doc.id || idx}
@@ -779,7 +870,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
                             }`}
                           >
                             <span className="material-symbols-outlined text-[14px]">
-                              {doc.isImage ? 'image' : 'description'}
+                              {iconType}
                             </span>
                             <span>{doc.docTypeLabel || doc.docType || `Doc ${idx + 1}`}</span>
                           </button>
@@ -790,26 +881,38 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
                     {/* Active Document Viewer */}
                     {activeDoc && (
                       <div>
-                        <div className="bg-neutral-900 rounded-xl overflow-hidden min-h-[300px] max-h-[480px] overflow-auto flex items-center justify-center p-4 border border-surface-variant">
-                          {activeDoc.isImage ? (
-                            <img
+                        <div className="bg-neutral-900 rounded-xl overflow-hidden min-h-[400px] max-h-[560px] flex items-center justify-center border border-surface-variant">
+                          {(activeDoc as any).isPdf ? (
+                            // PDF Viewer using iframe with Google Docs fallback
+                            <iframe
+                              key={activeDoc.url}
                               src={activeDoc.url}
-                              alt={activeDoc.docName}
-                              style={{
-                                transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                                transition: 'transform 0.18s ease-out',
-                                maxWidth: '100%',
-                                maxHeight: '420px',
-                                objectFit: 'contain',
-                              }}
-                              className="rounded shadow-2xl"
+                              title={activeDoc.docName}
+                              className="w-full h-[520px] bg-white"
+                              style={{ border: 'none' }}
                             />
+                          ) : activeDoc.isImage ? (
+                            <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                              <img
+                                src={activeDoc.url}
+                                alt={activeDoc.docName}
+                                style={{
+                                  transform: `scale(${zoom}) rotate(${rotation}deg)`,
+                                  transition: 'transform 0.18s ease-out',
+                                  maxWidth: '100%',
+                                  maxHeight: '500px',
+                                  objectFit: 'contain',
+                                }}
+                                className="rounded shadow-2xl"
+                              />
+                            </div>
                           ) : (
                             <div className="text-center text-white p-8">
                               <span className="material-symbols-outlined text-[54px] opacity-60">
                                 description
                               </span>
                               <p className="mt-2 text-xs font-semibold">{activeDoc.docName}</p>
+                              <p className="text-[10px] opacity-70 mt-1">Format: {activeDoc.format}</p>
                               <a
                                 href={activeDoc.url}
                                 target="_blank"
@@ -955,7 +1058,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
               <p className="font-bold">Automated system actions upon approval:</p>
               <p>✓ Verified badge attached to {detail.title} company profile</p>
               <p>✓ All published jobs marked with Verified shield</p>
-              <p>✓ Confirmation email dispatched to recruiter</p>
+              <p>✓ Confirmation email dispatched to {detail.recruiter?.email}</p>
             </div>
 
             <div className="mt-4 flex gap-2">
@@ -1021,7 +1124,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
             />
 
             <div className="mt-3 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
-              ⚠ The recruiter will be notified by email with the reason provided above.
+              ⚠ The recruiter ({detail.recruiter?.email}) will be notified by email with the reason above.
             </div>
 
             <div className="mt-4 flex gap-2">
@@ -1118,17 +1221,27 @@ export const VerificationView: React.FC<VerificationViewProps> = ({ onToast }) =
         >
           <button
             onClick={() => setFullscreenDoc(null)}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer z-10"
             title="Close Fullscreen"
           >
             <span className="material-symbols-outlined">close</span>
           </button>
-          <img
-            src={fullscreenDoc}
-            alt="Inspection"
-            className="max-w-full max-h-full object-contain rounded"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {fullscreenDoc.isPdf ? (
+            <iframe
+              src={fullscreenDoc.url}
+              title="Document"
+              className="w-[95vw] h-[95vh] bg-white rounded"
+              onClick={(e) => e.stopPropagation()}
+              style={{ border: 'none' }}
+            />
+          ) : (
+            <img
+              src={fullscreenDoc.url}
+              alt="Inspection"
+              className="max-w-full max-h-full object-contain rounded"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </div>

@@ -36,6 +36,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [isLoadingJobDetail, setIsLoadingJobDetail] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const [counts, setCounts] = useState({ total: 0, live: 0, pending: 0, rejected: 0, expired: 0 });
@@ -242,14 +243,34 @@ export const JobsView: React.FC<JobsViewProps> = ({
     }
   };
 
+  // ─── IMPROVED DELETE HANDLER with proper error handling & shared asset info ───
   const handleDeleteJob = async (id: string) => {
+    setIsDeleting(true);
     try {
-      await jobApi.deleteJob(id);
-      showToast('Job deleted successfully!');
+      const result = await jobApi.deleteJob(id);
       setDeleteConfirmId(null);
+
+      // Show informative toast about shared assets
+      if (result?.data?.skippedSharedAssets > 0) {
+        showToast(
+          `Job deleted! (${result.data.skippedSharedAssets} shared images preserved for other jobs)`,
+          'success'
+        );
+      } else {
+        showToast('Job deleted successfully!', 'success');
+      }
+
+      // Optimistically remove the job from local state (instant UI update)
+      setApiJobs((prev) => prev.filter((j) => j.id !== id));
+
+      // Re-fetch to sync with backend counts
       fetchJobs();
     } catch (err: any) {
-      showToast(err.message || 'Delete failed', 'error');
+      console.error('Delete Job Error:', err);
+      setDeleteConfirmId(null);
+      showToast(err.message || 'Failed to delete job. Please try again.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -317,21 +338,32 @@ export const JobsView: React.FC<JobsViewProps> = ({
               </div>
             </div>
             <p className="text-sm text-on-surface-variant my-4">
-              Are you sure you want to permanently delete this job listing? All associated Cloudinary images and data will be removed from MongoDB.
+              Are you sure you want to permanently delete this job listing? Shared company logos and images (used by other jobs or the recruiter profile) will be <strong>preserved automatically</strong>.
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 rounded-lg bg-surface-container text-on-surface text-sm font-semibold hover:bg-surface-container-high cursor-pointer"
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-surface-container text-on-surface text-sm font-semibold hover:bg-surface-container-high cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDeleteJob(deleteConfirmId)}
-                className="px-4 py-2 rounded-lg bg-error text-white text-sm font-bold hover:bg-error/90 cursor-pointer flex items-center gap-1"
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-error text-white text-sm font-bold hover:bg-error/90 cursor-pointer flex items-center gap-1 disabled:opacity-70"
               >
-                <span className="material-symbols-outlined text-[16px]">delete</span>
-                Yes, Delete
+                {isDeleting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                    Yes, Delete
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -549,6 +581,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
                         src={job.companyLogo}
                         alt={job.company}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // If image broken, show initials fallback
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const parent = (e.target as HTMLImageElement).parentElement;
+                          if (parent) parent.textContent = job.companyInitials;
+                        }}
                       />
                     ) : (
                       job.companyInitials
@@ -717,6 +755,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           <span className="material-symbols-outlined text-[16px]">edit</span>
                         </button>
                       )}
+                      <button
+                        onClick={() => setDeleteConfirmId(job.id)}
+                        className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error-container/30 cursor-pointer transition-colors"
+                        title="Delete Job"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                      </button>
                     </>
                   ) : (
                     <>

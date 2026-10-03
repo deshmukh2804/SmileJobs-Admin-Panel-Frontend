@@ -9,6 +9,7 @@ export type NavItem =
   | 'resumes-and-profiles'
   | 'verification'
   | 'payments-and-billing'
+   | 'manage-subscriptions' 
   | 'reports-and-complaints'
   | 'content-management'
   | 'banners'
@@ -76,6 +77,7 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'resumes-and-profiles',
     'verification',
     'payments-and-billing',
+    'manage-subscriptions',
     'reports-and-complaints',
     'content-management',
     'banners',

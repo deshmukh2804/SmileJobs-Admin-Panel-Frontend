@@ -98,7 +98,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: 'description',
       count: formatCount(totalApplicationsCount),
     },
-    { id: 'resumes-and-profiles', label: 'Resumes & Profiles', icon: 'badge' },
   ].filter((item) => isAllowed(item.id));
 
   const operationsItems: NavMenuItem[] = [
@@ -110,14 +109,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       countColor: 'bg-surface-container-highest text-on-surface font-semibold',
     },
     { id: 'payments-and-billing', label: 'Payments & Billing', icon: 'credit_card' },
+    // ⚡ NEW: MANAGE SUBSCRIPTIONS TAB
     {
-      id: 'reports-and-complaints',
-      label: 'Reports & Complaints',
-      icon: 'warning',
-      count: reportsCount,
-      countColor: 'bg-error-container text-on-error-container font-semibold',
+      id: 'manage-subscriptions',
+      label: 'Manage Subscriptions',
+      icon: 'workspace_premium',
+      countColor: 'bg-[#EAE8F4] text-[#6750A4] font-bold',
     },
-    { id: 'content-management', label: 'Content Management', icon: 'view_kanban' },
     { id: 'banners', label: 'Banners', icon: 'image' },
     { id: 'notifications', label: 'Notifications', icon: 'notifications' },
   ].filter((item) => isAllowed(item.id));
@@ -125,7 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const systemItems: NavMenuItem[] = [
     { id: 'roles-and-permissions', label: 'Roles & Permissions', icon: 'security' },
     { id: 'bottom-nav-config', label: 'Mobile Bottom Nav', icon: 'phone_iphone' },
-    { id: 'platform-settings', label: 'Platform Settings', icon: 'settings' },
     { id: 'admin-activity-log', label: 'Admin Activity Log', icon: 'history' },
   ].filter((item) => isAllowed(item.id));
 
@@ -174,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="fixed left-0 top-0 h-screen w-[260px] bg-surface-container-lowest border-r border-surface-variant z-50 flex flex-col justify-between overflow-y-auto select-none">
       <div className="flex flex-col">
-        {/* Brand Header — Smile Jobs (text logo, no hardcoded image) */}
+        {/* Brand Header — Smile Jobs */}
         <div className="h-16 px-space-md border-b border-surface-variant flex items-center justify-between gap-space-sm">
           <div
             className="flex items-center gap-space-sm min-w-0 cursor-pointer"

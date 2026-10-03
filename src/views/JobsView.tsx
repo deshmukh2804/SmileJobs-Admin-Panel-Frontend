@@ -1,5 +1,5 @@
 // FILE: frontend/src/views/JobsView.tsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { JobItem, NavItem } from '../types';
 import { jobApi } from '../services/api';
 
@@ -70,20 +70,32 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
+  // ⚡ Track jobs currently being deleted for smooth fade-out animation
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  // ⚡ Track locally-deleted IDs to prevent re-appearance during refresh race
+  const deletedIdsRef = useRef<Set<string>>(new Set());
+  // ⚡ Track pending refresh to prevent double-fetches
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const [counts, setCounts] = useState({ total: 0, live: 0, pending: 0, rejected: 0, expired: 0 });
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
 
-  const jobs = apiJobs.length > 0 ? apiJobs : propJobs;
+  // ⚡ Use apiJobs when loaded, but always filter out locally-deleted IDs
+  const jobs = useMemo(() => {
+    const source = apiJobs.length > 0 ? apiJobs : propJobs;
+    if (deletedIdsRef.current.size === 0) return source;
+    return source.filter((j) => !deletedIdsRef.current.has(j.id));
+  }, [apiJobs, propJobs]);
 
-  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+  const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
-  };
+  }, []);
 
   /* ═══════════════════════════════════════════════════════════════
      TRANSFORM JOB — Maps ALL backend fields to frontend JobItem
      ═══════════════════════════════════════════════════════════════ */
-  const transformJob = (job: any, whatsappData?: any): JobItem => {
+  const transformJob = useCallback((job: any, whatsappData?: any): JobItem => {
     const companyName = job.companyName || job.company || '';
     const initials =
       job.companyInitials ||
@@ -109,16 +121,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
         const max = job.experience.max;
         experienceRange = max !== undefined ? `${min} - ${max} yrs` : `${min}+ yrs`;
       }
-    }
-
-    // Debug log — check the console to verify noticePeriod arrives
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('🔍 Job transform:', job.title, {
-        noticePeriod: job.noticePeriod,
-        establishedYear: job.establishedYear,
-        organizationSize: job.organizationSize,
-        industry: job.industry,
-      });
     }
 
     return {
@@ -206,7 +208,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
       whatsapp: whatsappData || job.whatsapp || { enabled: false },
       notes: job.notes || '',
     };
-  };
+  }, []);
 
   const fetchJobs = useCallback(async () => {
     setIsLoadingJobs(true);
@@ -239,7 +241,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
       const response = await jobApi.getJobs(queryParams);
 
       if (response.success && response.data) {
-        const transformedJobs: JobItem[] = response.data.map((j: any) => transformJob(j));
+        const transformedJobs: JobItem[] = response.data
+          .map((j: any) => transformJob(j))
+          // ⚡ CRITICAL: Filter out any job IDs we know are deleted locally
+          .filter((j: JobItem) => !deletedIdsRef.current.has(j.id));
+
         setApiJobs(transformedJobs);
         if (response.counts) setCounts(response.counts);
         if (response.pagination) setPagination((prev) => ({ ...prev, ...response.pagination }));
@@ -250,10 +256,21 @@ export const JobsView: React.FC<JobsViewProps> = ({
     } finally {
       setIsLoadingJobs(false);
     }
-  }, [activeTab, searchQuery, jobTypeFilter, workModeFilter, pagination.page]);
+  }, [activeTab, searchQuery, jobTypeFilter, workModeFilter, pagination.page, pagination.limit, transformJob]);
 
   useEffect(() => {
     fetchJobs();
+  }, [fetchJobs]);
+
+  // ⚡ Debounced refresh — prevents multiple refetches within 1s
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = setTimeout(() => {
+      fetchJobs();
+      refreshTimerRef.current = null;
+    }, 800);
   }, [fetchJobs]);
 
   const handleViewJob = async (job: JobItem) => {
@@ -279,62 +296,112 @@ export const JobsView: React.FC<JobsViewProps> = ({
   };
 
   const handleApproveJob = async (id: string) => {
+    // Optimistic update
+    setApiJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: 'Live' as any } : j)));
+    setCounts((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1), live: prev.live + 1 }));
     try {
       await jobApi.approveJob(id);
       onApproveJob(id);
       showToast('Job approved successfully!');
-      fetchJobs();
+      scheduleRefresh();
     } catch (err: any) {
       showToast(err.message || 'Approve failed', 'error');
+      fetchJobs();
     }
   };
 
   const handleRejectJob = async (id: string) => {
+    setApiJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: 'Rejected' as any } : j)));
+    setCounts((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1), rejected: prev.rejected + 1 }));
     try {
       await jobApi.rejectJob(id);
       onRejectJob(id);
       showToast('Job rejected');
-      fetchJobs();
+      scheduleRefresh();
     } catch (err: any) {
       showToast(err.message || 'Reject failed', 'error');
+      fetchJobs();
     }
   };
 
   const handleToggleFeature = async (id: string) => {
+    setApiJobs((prev) => prev.map((j) => (j.id === id ? { ...j, featured: !j.featured } : j)));
     try {
       await jobApi.toggleFeature(id);
       onToggleFeature(id);
       showToast('Feature status updated');
-      fetchJobs();
     } catch (err: any) {
       showToast(err.message || 'Feature toggle failed', 'error');
+      fetchJobs();
     }
   };
 
   const handleToggleStatus = async (id: string) => {
+    setApiJobs((prev) =>
+      prev.map((j) =>
+        j.id === id ? { ...j, status: (j.status === 'Live' ? 'Closed' : 'Live') as any } : j
+      )
+    );
     try {
       await jobApi.toggleStatus(id);
       onToggleStatus(id);
       showToast('Status updated');
-      fetchJobs();
+      scheduleRefresh();
     } catch (err: any) {
       showToast(err.message || 'Toggle failed', 'error');
+      fetchJobs();
     }
   };
 
+  /* ═══════════════════════════════════════════════════════════════
+     ⚡ DELETE JOB — Smooth optimistic UI with fade animation
+     ═══════════════════════════════════════════════════════════════ */
   const handleDeleteJob = async (id: string) => {
-    setIsDeleting(true);
     setDeleteConfirmId(null);
-    setApiJobs((prev) => prev.filter((job) => job.id !== id));
-    onDeleteJob(id);
-    showToast('Job deleted successfully!');
 
+    // Step 1: Start fade-out animation
+    setDeletingIds((prev) => new Set(prev).add(id));
+
+    // Step 2: Mark as locally-deleted (blocks any refresh from bringing it back)
+    deletedIdsRef.current.add(id);
+
+    setIsDeleting(true);
+
+    // Step 3: Wait 250ms for fade animation, then remove from state
+    setTimeout(() => {
+      setApiJobs((prev) => prev.filter((j) => j.id !== id));
+      setCounts((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 250);
+
+    // Step 4: Fire backend delete + notify parent
     try {
       await jobApi.deleteJob(id);
-      await fetchJobs();
+      onDeleteJob(id);
+      showToast('Job deleted successfully!');
+
+      // Step 5: Silent refresh in background after 2s to sync counts
+      setTimeout(() => {
+        // Keep the deleted ID in ref for 5 more seconds to avoid re-appearance
+        setTimeout(() => {
+          deletedIdsRef.current.delete(id);
+        }, 5000);
+        fetchJobs();
+      }, 2000);
     } catch (err: any) {
+      // Rollback on failure
+      deletedIdsRef.current.delete(id);
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       showToast(err.message || 'Delete failed on server — please refresh', 'error');
-      await fetchJobs();
+      fetchJobs();
     } finally {
       setIsDeleting(false);
     }
@@ -410,7 +477,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
     </div>
   );
 
-  // ─── NEW: Notice Period Badge Component (RE-USED in all rows) ───
+  // ─── Notice Period Badge Component (RE-USED in all rows) ───
   const NoticePeriodBadge = ({ notice, size = 'sm' }: { notice: string; size?: 'sm' | 'md' }) => {
     if (!notice) return null;
     const isSmall = size === 'sm';
@@ -715,349 +782,149 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
 
           <div className="divide-y divide-surface-variant/50">
-            {filteredJobs.map((job) => (
-              <div
-                key={job.id}
-                className={`group transition-all duration-300 hover:bg-surface-container-low/40 ${
-                  job.featured ? 'bg-[#C58A3A]/[0.03]' : ''
-                }`}
-              >
-                {/* ========== DESKTOP ROW ========== */}
-                <div className="hidden lg:grid lg:grid-cols-[minmax(0,2.5fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_100px_100px_minmax(0,1.2fr)] gap-4 px-5 py-3.5 items-center">
-                  {/* Col 1: Job Details */}
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
-                      {job.companyLogo ? (
-                        <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
-                      ) : (
-                        job.companyInitials
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <h3
-                          onClick={() => handleViewJob(job)}
-                          className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
-                          title={job.title}
-                        >
-                          {job.title}
-                        </h3>
-                        {job.featured && (
-                          <span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0" title="Featured">
-                            star
-                          </span>
-                        )}
-                        <ContactBadges job={job} size={14} />
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                        <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
-                        {job.isCompanyVerified && (
-                          <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
+            {filteredJobs.map((job) => {
+              const isBeingDeleted = deletingIds.has(job.id);
+
+              return (
+                <div
+                  key={job.id}
+                  className={`group transition-all duration-300 hover:bg-surface-container-low/40 ${
+                    job.featured ? 'bg-[#C58A3A]/[0.03]' : ''
+                  }`}
+                  style={{
+                    opacity: isBeingDeleted ? 0 : 1,
+                    transform: isBeingDeleted ? 'translateX(-20px) scale(0.98)' : 'translateX(0) scale(1)',
+                    maxHeight: isBeingDeleted ? 0 : 500,
+                    overflow: 'hidden',
+                    pointerEvents: isBeingDeleted ? 'none' : 'auto',
+                    transition: 'opacity 0.25s ease-out, transform 0.25s ease-out, max-height 0.25s ease-out',
+                  }}
+                >
+                  {/* ========== DESKTOP ROW ========== */}
+                  <div className="hidden lg:grid lg:grid-cols-[minmax(0,2.5fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_100px_100px_minmax(0,1.2fr)] gap-4 px-5 py-3.5 items-center">
+                    {/* Col 1: Job Details */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
+                        {job.companyLogo ? (
+                          <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
+                        ) : (
+                          job.companyInitials
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        {job.isNew && (
-                          <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px] leading-none">
-                            NEW
-                          </span>
-                        )}
-                        <span className="text-[10px] text-outline">{job.jobType}</span>
-                        {job.industry && (
-                          <span className="text-[10px] text-outline">· {job.industry}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Col 2: Location & Mode */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="material-symbols-outlined text-[14px] text-outline shrink-0">location_on</span>
-                      <span className="text-xs text-on-surface-variant truncate">{job.location || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="material-symbols-outlined text-[14px] text-outline shrink-0">work</span>
-                      <span className="text-xs text-outline">{job.workMode}</span>
-                    </div>
-                    {job.organizationSize && (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className="material-symbols-outlined text-[14px] text-outline shrink-0">groups</span>
-                        <span className="text-[10px] text-outline truncate">{job.organizationSize}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Col 3: Salary & Notice */}
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-primary truncate">{job.salaryRange}</div>
-                    <div className="text-[10px] text-outline mt-0.5">{job.salaryPeriod || 'Annual'}</div>
-                    {job.experienceRange && (
-                      <div className="text-[10px] text-outline mt-1 truncate" title="Experience">
-                        🎯 {job.experienceRange}
-                      </div>
-                    )}
-                    {job.noticePeriod && (
-                      <div className="mt-1.5">
-                        <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Col 4: Applicants */}
-                  <div className="text-center">
-                    <div className="text-sm font-bold text-primary">
-                      {job.applicantsCount}
-                      <span className="text-outline font-normal text-[10px]">/{job.applicantsCap}</span>
-                    </div>
-                    <div className="w-full max-w-[80px] mx-auto bg-surface-container h-1 rounded-full overflow-hidden mt-1">
-                      <div
-                        className="bg-primary h-full rounded-full transition-all"
-                        style={{
-                          width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Col 5: Status */}
-                  <div className="flex justify-center">
-                    <StatusBadge status={job.status} />
-                  </div>
-
-                  {/* Col 6: Actions */}
-                  <div className="flex items-center justify-end gap-1">
-                    {job.status === 'Pending Approval' ? (
-                      <>
-                        <button
-                          onClick={() => handleApproveJob(job.id)}
-                          className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center hover:opacity-90 cursor-pointer transition-opacity"
-                          title="Approve"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">check</span>
-                        </button>
-                        <button
-                          onClick={() => handleRejectJob(job.id)}
-                          className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center hover:bg-error-container/80 cursor-pointer transition-colors"
-                          title="Reject"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">close</span>
-                        </button>
-                        <button
-                          onClick={() => handleViewJob(job)}
-                          disabled={isLoadingJobDetail === job.id}
-                          className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
-                          title="View"
-                        >
-                          {isLoadingJobDetail === job.id ? (
-                            <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                          ) : (
-                            <span className="material-symbols-outlined text-[16px]">visibility</span>
-                          )}
-                        </button>
-                        {onEditJob && (
-                          <button
-                            onClick={() => onEditJob(job.id)}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors"
-                            title="Edit"
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h3
+                            onClick={() => handleViewJob(job)}
+                            className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
+                            title={job.title}
                           >
-                            <span className="material-symbols-outlined text-[16px]">edit</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setDeleteConfirmId(job.id)}
-                          className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors"
-                          title="Delete"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleViewJob(job)}
-                          disabled={isLoadingJobDetail === job.id}
-                          className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
-                          title="View"
-                        >
-                          {isLoadingJobDetail === job.id ? (
-                            <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                          ) : (
-                            <span className="material-symbols-outlined text-[16px]">visibility</span>
-                          )}
-                        </button>
-                        {onEditJob && (
-                          <button
-                            onClick={() => onEditJob(job.id)}
-                            className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer hover:bg-primary-container transition-colors"
-                            title="Edit Job"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">edit</span>
-                            <span>Edit</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleToggleFeature(job.id)}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-surface-container cursor-pointer transition-colors ${
-                            job.featured ? 'text-[#C58A3A]' : 'text-outline hover:text-[#C58A3A]'
-                          }`}
-                          title={job.featured ? 'Unfeature' : 'Feature'}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">
-                            {job.featured ? 'star' : 'star_border'}
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(job.id)}
-                          className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors"
-                          title={job.status === 'Live' ? 'Pause' : 'Activate'}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">
-                            {job.status === 'Live' ? 'pause_circle' : 'play_circle'}
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirmId(job.id)}
-                          className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors"
-                          title="Delete"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* ========== TABLET ROW ========== */}
-                <div className="hidden md:block lg:hidden px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-11 h-11 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-sm shadow-sm shrink-0 overflow-hidden">
-                      {job.companyLogo ? (
-                        <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
-                      ) : (
-                        job.companyInitials
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3
-                              onClick={() => handleViewJob(job)}
-                              className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
-                            >
-                              {job.title}
-                            </h3>
-                            {job.featured && (
-                              <span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0">star</span>
-                            )}
-                            <ContactBadges job={job} size={13} />
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
-                            {job.isCompanyVerified && (
-                              <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
-                            )}
-                            {job.industry && (
-                              <span className="text-[10px] text-outline">· {job.industry}</span>
-                            )}
-                          </div>
-                        </div>
-                        <StatusBadge status={job.status} />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 mt-3">
-                        <div>
-                          <div className="flex items-center gap-1 mb-0.5">
-                            <span className="material-symbols-outlined text-[12px] text-outline">location_on</span>
-                            <span className="text-[10px] text-outline uppercase font-bold">Location</span>
-                          </div>
-                          <span className="text-xs text-on-surface-variant block truncate">{job.location || 'N/A'}</span>
-                          <span className="text-[10px] text-outline">{job.workMode}</span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1 mb-0.5">
-                            <span className="material-symbols-outlined text-[12px] text-outline">payments</span>
-                            <span className="text-[10px] text-outline uppercase font-bold">Salary</span>
-                          </div>
-                          <span className="text-xs text-primary font-bold block truncate">{job.salaryRange}</span>
-                          <span className="text-[10px] text-outline">{job.salaryPeriod || 'Annual'}</span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1 mb-0.5">
-                            <span className="material-symbols-outlined text-[12px] text-outline">group</span>
-                            <span className="text-[10px] text-outline uppercase font-bold">Applicants</span>
-                          </div>
-                          <span className="text-xs text-primary font-bold">
-                            {job.applicantsCount}/{job.applicantsCap}
-                          </span>
-                          <div className="w-full max-w-[80px] bg-surface-container h-1 rounded-full overflow-hidden mt-0.5">
-                            <div
-                              className="bg-primary h-full rounded-full"
-                              style={{
-                                width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Extra Info Row — with prominent Notice Period */}
-                      {(job.experienceRange || job.noticePeriod || job.organizationSize) && (
-                        <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                          {job.experienceRange && (
-                            <span className="text-[10px] text-outline flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[11px]">military_tech</span>
-                              {job.experienceRange}
+                            {job.title}
+                          </h3>
+                          {job.featured && (
+                            <span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0" title="Featured">
+                              star
                             </span>
                           )}
-                          {job.noticePeriod && (
-                            <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
-                          )}
-                          {job.organizationSize && (
-                            <span className="text-[10px] text-outline flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[11px]">groups</span>
-                              {job.organizationSize}
-                            </span>
+                          <ContactBadges job={job} size={14} />
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                          <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
+                          {job.isCompanyVerified && (
+                            <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
                           )}
                         </div>
-                      )}
-
-                      <div className="flex items-center justify-between mt-3 pt-2 border-t border-surface-variant/40">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           {job.isNew && (
-                            <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px]">NEW</span>
+                            <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px] leading-none">
+                              NEW
+                            </span>
                           )}
                           <span className="text-[10px] text-outline">{job.jobType}</span>
-                        </div>
-
-                        <div className="flex items-center gap-0.5">
-                          {job.status === 'Pending Approval' ? (
-                            <>
-                              <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer" title="Approve">
-                                <span className="material-symbols-outlined text-[16px]">check</span>
-                              </button>
-                              <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer" title="Reject">
-                                <span className="material-symbols-outlined text-[16px]">close</span>
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}>
-                                <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
-                              </button>
-                              <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer">
-                                <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
-                              </button>
-                            </>
+                          {job.industry && (
+                            <span className="text-[10px] text-outline">· {job.industry}</span>
                           )}
-                          <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer">
-                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Col 2: Location & Mode */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="material-symbols-outlined text-[14px] text-outline shrink-0">location_on</span>
+                        <span className="text-xs text-on-surface-variant truncate">{job.location || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="material-symbols-outlined text-[14px] text-outline shrink-0">work</span>
+                        <span className="text-xs text-outline">{job.workMode}</span>
+                      </div>
+                      {job.organizationSize && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="material-symbols-outlined text-[14px] text-outline shrink-0">groups</span>
+                          <span className="text-[10px] text-outline truncate">{job.organizationSize}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Col 3: Salary & Notice */}
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-primary truncate">{job.salaryRange}</div>
+                      <div className="text-[10px] text-outline mt-0.5">{job.salaryPeriod || 'Annual'}</div>
+                      {job.experienceRange && (
+                        <div className="text-[10px] text-outline mt-1 truncate" title="Experience">
+                          🎯 {job.experienceRange}
+                        </div>
+                      )}
+                      {job.noticePeriod && (
+                        <div className="mt-1.5">
+                          <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Col 4: Applicants */}
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-primary">
+                        {job.applicantsCount}
+                        <span className="text-outline font-normal text-[10px]">/{job.applicantsCap}</span>
+                      </div>
+                      <div className="w-full max-w-[80px] mx-auto bg-surface-container h-1 rounded-full overflow-hidden mt-1">
+                        <div
+                          className="bg-primary h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Col 5: Status */}
+                    <div className="flex justify-center">
+                      <StatusBadge status={job.status} />
+                    </div>
+
+                    {/* Col 6: Actions */}
+                    <div className="flex items-center justify-end gap-1">
+                      {job.status === 'Pending Approval' ? (
+                        <>
+                          <button
+                            onClick={() => handleApproveJob(job.id)}
+                            className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center hover:opacity-90 cursor-pointer transition-opacity"
+                            title="Approve"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">check</span>
+                          </button>
+                          <button
+                            onClick={() => handleRejectJob(job.id)}
+                            className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center hover:bg-error-container/80 cursor-pointer transition-colors"
+                            title="Reject"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">close</span>
                           </button>
                           <button
                             onClick={() => handleViewJob(job)}
                             disabled={isLoadingJobDetail === job.id}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer disabled:opacity-50"
+                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                            title="View"
                           >
                             {isLoadingJobDetail === job.id ? (
                               <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -1066,143 +933,355 @@ export const JobsView: React.FC<JobsViewProps> = ({
                             )}
                           </button>
                           {onEditJob && (
-                            <button onClick={() => onEditJob(job.id)} className="h-8 px-2 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer">
-                              <span className="material-symbols-outlined text-[14px]">edit</span>Edit
+                            <button
+                              onClick={() => onEditJob(job.id)}
+                              className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors"
+                              title="Edit"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">edit</span>
                             </button>
                           )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ========== MOBILE ROW ========== */}
-                <div className="md:hidden px-3 py-3">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
-                      {job.companyLogo ? (
-                        <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
-                      ) : (
-                        job.companyInitials
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h3
-                              onClick={() => handleViewJob(job)}
-                              className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
-                            >
-                              {job.title}
-                            </h3>
-                            {job.featured && (
-                              <span className="material-symbols-outlined text-[12px] text-[#C58A3A] shrink-0">star</span>
-                            )}
-                            <ContactBadges job={job} size={12} />
-                          </div>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-[11px] text-on-surface-variant truncate">{job.company}</span>
-                            {job.isCompanyVerified && (
-                              <span className="material-symbols-outlined text-[11px] text-[#5F8A72] shrink-0">verified</span>
-                            )}
-                          </div>
-                        </div>
-                        <StatusBadge status={job.status} />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-[11px]">
-                        <span className="flex items-center gap-1 text-on-surface-variant">
-                          <span className="material-symbols-outlined text-[13px] text-outline">location_on</span>
-                          <span className="truncate max-w-[120px]">{job.location || 'N/A'}</span>
-                        </span>
-                        <span className="flex items-center gap-1 text-outline">
-                          <span className="material-symbols-outlined text-[13px]">work</span>
-                          {job.workMode}
-                        </span>
-                        <span className="text-primary font-bold">{job.salaryRange}</span>
-                        <span className="text-outline">{job.jobType}</span>
-                      </div>
-
-                      {/* Mobile: Notice Period Badge (prominent) */}
-                      {(job.experienceRange || job.noticePeriod) && (
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                          {job.experienceRange && (
-                            <span className="text-[10px] text-outline flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[11px]">military_tech</span>
-                              {job.experienceRange}
-                            </span>
-                          )}
-                          {job.noticePeriod && (
-                            <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-1.5 mt-2">
-                        {job.isNew && (
-                          <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[8px]">NEW</span>
-                        )}
-                        <span className="text-[10px] text-outline">
-                          {job.applicantsCount}/{job.applicantsCap} applicants
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-surface-variant/40">
-                        <div className="flex items-center gap-0.5">
-                          {job.status === 'Pending Approval' ? (
-                            <>
-                              <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer">
-                                <span className="material-symbols-outlined text-[16px]">check</span>
-                              </button>
-                              <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer">
-                                <span className="material-symbols-outlined text-[16px]">close</span>
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}>
-                                <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
-                              </button>
-                              <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline flex items-center justify-center cursor-pointer">
-                                <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
-                              </button>
-                            </>
-                          )}
-                          <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer">
+                          <button
+                            onClick={() => setDeleteConfirmId(job.id)}
+                            className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors"
+                            title="Delete"
+                          >
                             <span className="material-symbols-outlined text-[16px]">delete</span>
                           </button>
-                        </div>
-                        <div className="flex items-center gap-1">
+                        </>
+                      ) : (
+                        <>
                           <button
                             onClick={() => handleViewJob(job)}
                             disabled={isLoadingJobDetail === job.id}
-                            className="h-8 px-2.5 rounded-lg border border-outline-variant text-outline hover:text-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                            title="View"
                           >
                             {isLoadingJobDetail === job.id ? (
-                              <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                              <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                             ) : (
-                              <span className="material-symbols-outlined text-[14px]">visibility</span>
+                              <span className="material-symbols-outlined text-[16px]">visibility</span>
                             )}
-                            <span>View</span>
                           </button>
                           {onEditJob && (
                             <button
                               onClick={() => onEditJob(job.id)}
-                              className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                              className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer hover:bg-primary-container transition-colors"
+                              title="Edit Job"
                             >
                               <span className="material-symbols-outlined text-[14px]">edit</span>
                               <span>Edit</span>
                             </button>
                           )}
+                          <button
+                            onClick={() => handleToggleFeature(job.id)}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-surface-container cursor-pointer transition-colors ${
+                              job.featured ? 'text-[#C58A3A]' : 'text-outline hover:text-[#C58A3A]'
+                            }`}
+                            title={job.featured ? 'Unfeature' : 'Feature'}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {job.featured ? 'star' : 'star_border'}
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(job.id)}
+                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors"
+                            title={job.status === 'Live' ? 'Pause' : 'Activate'}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {job.status === 'Live' ? 'pause_circle' : 'play_circle'}
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(job.id)}
+                            className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors"
+                            title="Delete"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ========== TABLET ROW ========== */}
+                  <div className="hidden md:block lg:hidden px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-11 h-11 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-sm shadow-sm shrink-0 overflow-hidden">
+                        {job.companyLogo ? (
+                          <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
+                        ) : (
+                          job.companyInitials
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3
+                                onClick={() => handleViewJob(job)}
+                                className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
+                              >
+                                {job.title}
+                              </h3>
+                              {job.featured && (
+                                <span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0">star</span>
+                              )}
+                              <ContactBadges job={job} size={13} />
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
+                              {job.isCompanyVerified && (
+                                <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
+                              )}
+                              {job.industry && (
+                                <span className="text-[10px] text-outline">· {job.industry}</span>
+                              )}
+                            </div>
+                          </div>
+                          <StatusBadge status={job.status} />
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 mt-3">
+                          <div>
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <span className="material-symbols-outlined text-[12px] text-outline">location_on</span>
+                              <span className="text-[10px] text-outline uppercase font-bold">Location</span>
+                            </div>
+                            <span className="text-xs text-on-surface-variant block truncate">{job.location || 'N/A'}</span>
+                            <span className="text-[10px] text-outline">{job.workMode}</span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <span className="material-symbols-outlined text-[12px] text-outline">payments</span>
+                              <span className="text-[10px] text-outline uppercase font-bold">Salary</span>
+                            </div>
+                            <span className="text-xs text-primary font-bold block truncate">{job.salaryRange}</span>
+                            <span className="text-[10px] text-outline">{job.salaryPeriod || 'Annual'}</span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <span className="material-symbols-outlined text-[12px] text-outline">group</span>
+                              <span className="text-[10px] text-outline uppercase font-bold">Applicants</span>
+                            </div>
+                            <span className="text-xs text-primary font-bold">
+                              {job.applicantsCount}/{job.applicantsCap}
+                            </span>
+                            <div className="w-full max-w-[80px] bg-surface-container h-1 rounded-full overflow-hidden mt-0.5">
+                              <div
+                                className="bg-primary h-full rounded-full"
+                                style={{
+                                  width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Extra Info Row — with prominent Notice Period */}
+                        {(job.experienceRange || job.noticePeriod || job.organizationSize) && (
+                          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                            {job.experienceRange && (
+                              <span className="text-[10px] text-outline flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[11px]">military_tech</span>
+                                {job.experienceRange}
+                              </span>
+                            )}
+                            {job.noticePeriod && (
+                              <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
+                            )}
+                            {job.organizationSize && (
+                              <span className="text-[10px] text-outline flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[11px]">groups</span>
+                                {job.organizationSize}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between mt-3 pt-2 border-t border-surface-variant/40">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {job.isNew && (
+                              <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px]">NEW</span>
+                            )}
+                            <span className="text-[10px] text-outline">{job.jobType}</span>
+                          </div>
+
+                          <div className="flex items-center gap-0.5">
+                            {job.status === 'Pending Approval' ? (
+                              <>
+                                <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer" title="Approve">
+                                  <span className="material-symbols-outlined text-[16px]">check</span>
+                                </button>
+                                <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer" title="Reject">
+                                  <span className="material-symbols-outlined text-[16px]">close</span>
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}>
+                                  <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
+                                </button>
+                                <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer">
+                                  <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
+                                </button>
+                              </>
+                            )}
+                            <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer">
+                              <span className="material-symbols-outlined text-[16px]">delete</span>
+                            </button>
+                            <button
+                              onClick={() => handleViewJob(job)}
+                              disabled={isLoadingJobDetail === job.id}
+                              className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer disabled:opacity-50"
+                            >
+                              {isLoadingJobDetail === job.id ? (
+                                <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                              ) : (
+                                <span className="material-symbols-outlined text-[16px]">visibility</span>
+                              )}
+                            </button>
+                            {onEditJob && (
+                              <button onClick={() => onEditJob(job.id)} className="h-8 px-2 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer">
+                                <span className="material-symbols-outlined text-[14px]">edit</span>Edit
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ========== MOBILE ROW ========== */}
+                  <div className="md:hidden px-3 py-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
+                        {job.companyLogo ? (
+                          <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
+                        ) : (
+                          job.companyInitials
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h3
+                                onClick={() => handleViewJob(job)}
+                                className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
+                              >
+                                {job.title}
+                              </h3>
+                              {job.featured && (
+                                <span className="material-symbols-outlined text-[12px] text-[#C58A3A] shrink-0">star</span>
+                              )}
+                              <ContactBadges job={job} size={12} />
+                            </div>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[11px] text-on-surface-variant truncate">{job.company}</span>
+                              {job.isCompanyVerified && (
+                                <span className="material-symbols-outlined text-[11px] text-[#5F8A72] shrink-0">verified</span>
+                              )}
+                            </div>
+                          </div>
+                          <StatusBadge status={job.status} />
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-[11px]">
+                          <span className="flex items-center gap-1 text-on-surface-variant">
+                            <span className="material-symbols-outlined text-[13px] text-outline">location_on</span>
+                            <span className="truncate max-w-[120px]">{job.location || 'N/A'}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-outline">
+                            <span className="material-symbols-outlined text-[13px]">work</span>
+                            {job.workMode}
+                          </span>
+                          <span className="text-primary font-bold">{job.salaryRange}</span>
+                          <span className="text-outline">{job.jobType}</span>
+                        </div>
+
+                        {/* Mobile: Notice Period Badge (prominent) */}
+                        {(job.experienceRange || job.noticePeriod) && (
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {job.experienceRange && (
+                              <span className="text-[10px] text-outline flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[11px]">military_tech</span>
+                                {job.experienceRange}
+                              </span>
+                            )}
+                            {job.noticePeriod && (
+                              <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {job.isNew && (
+                            <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[8px]">NEW</span>
+                          )}
+                          <span className="text-[10px] text-outline">
+                            {job.applicantsCount}/{job.applicantsCap} applicants
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-surface-variant/40">
+                          <div className="flex items-center gap-0.5">
+                            {job.status === 'Pending Approval' ? (
+                              <>
+                                <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer">
+                                  <span className="material-symbols-outlined text-[16px]">check</span>
+                                </button>
+                                <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer">
+                                  <span className="material-symbols-outlined text-[16px]">close</span>
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}>
+                                  <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
+                                </button>
+                                <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline flex items-center justify-center cursor-pointer">
+                                  <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
+                                </button>
+                              </>
+                            )}
+                            <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer">
+                              <span className="material-symbols-outlined text-[16px]">delete</span>
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleViewJob(job)}
+                              disabled={isLoadingJobDetail === job.id}
+                              className="h-8 px-2.5 rounded-lg border border-outline-variant text-outline hover:text-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            >
+                              {isLoadingJobDetail === job.id ? (
+                                <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                              ) : (
+                                <span className="material-symbols-outlined text-[14px]">visibility</span>
+                              )}
+                              <span>View</span>
+                            </button>
+                            {onEditJob && (
+                              <button
+                                onClick={() => onEditJob(job.id)}
+                                className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">edit</span>
+                                <span>Edit</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

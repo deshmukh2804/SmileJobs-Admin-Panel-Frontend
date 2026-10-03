@@ -179,12 +179,14 @@ export const jobApi = {
     return data;
   },
 
-  async deleteJob(id: string) {
+   async deleteJob(id: string) {
     const res = await safeFetch(`${API_BASE_URL}/jobs/${id}`, {
       method: 'DELETE',
       headers: getJsonHeaders(),
     });
-    return res.json();
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to delete job');
+    return data;
   },
 
   async approveJob(id: string) {
@@ -1140,5 +1142,43 @@ export const verificationApi = {
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.message || 'Failed to fetch stats');
     return data;
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PAYMENTS, BILLING & OVERRIDES API
+   ═══════════════════════════════════════════════════════════ */
+export const billingApi = {
+  async getPayments(params?: { page?: number; limit?: number; search?: string; status?: string }) {
+    const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/payments-and-billing/payments${query}`, {
+      headers: getJsonHeaders(),
+    });
+    return res.json();
+  },
+
+  async getSubscriptions(params?: { page?: number; limit?: number; search?: string; status?: string }) {
+    const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/payments-and-billing/subscriptions${query}`, {
+      headers: getJsonHeaders(),
+    });
+    return res.json();
+  },
+
+  async getLimits(params?: { page?: number; limit?: number; search?: string }) {
+    const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/payments-and-billing/limits${query}`, {
+      headers: getJsonHeaders(),
+    });
+    return res.json();
+  },
+
+  async updateLimits(id: string, payload: { candidateViewsLimit?: number; jobPostsLimit?: number }) {
+    const res = await safeFetch(`${API_BASE_URL}/payments-and-billing/limits/${id}`, {
+      method: 'PATCH',
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return res.json();
   },
 };
