@@ -192,6 +192,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
       recruiterWhatsappNumber: job.recruiterWhatsappNumber || '',
       recruiterMobileNumber: job.recruiterMobileNumber || '',
       recruiterEmail: job.recruiterEmail || '',
+      recruiterId: job.recruiterId, // Populated from backend connection
 
       // ─── Application ───
       applicationUrl: job.applicationUrl || '',
@@ -243,7 +244,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
       if (response.success && response.data) {
         const transformedJobs: JobItem[] = response.data
           .map((j: any) => transformJob(j))
-          // ⚡ CRITICAL: Filter out any job IDs we know are deleted locally
           .filter((j: JobItem) => !deletedIdsRef.current.has(j.id));
 
         setApiJobs(transformedJobs);
@@ -262,7 +262,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
     fetchJobs();
   }, [fetchJobs]);
 
-  // ⚡ Debounced refresh — prevents multiple refetches within 1s
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
@@ -296,7 +295,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
   };
 
   const handleApproveJob = async (id: string) => {
-    // Optimistic update
     setApiJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: 'Live' as any } : j)));
     setCounts((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1), live: prev.live + 1 }));
     try {
@@ -353,21 +351,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════════
-     ⚡ DELETE JOB — Smooth optimistic UI with fade animation
-     ═══════════════════════════════════════════════════════════════ */
   const handleDeleteJob = async (id: string) => {
     setDeleteConfirmId(null);
-
-    // Step 1: Start fade-out animation
     setDeletingIds((prev) => new Set(prev).add(id));
-
-    // Step 2: Mark as locally-deleted (blocks any refresh from bringing it back)
     deletedIdsRef.current.add(id);
-
     setIsDeleting(true);
 
-    // Step 3: Wait 250ms for fade animation, then remove from state
     setTimeout(() => {
       setApiJobs((prev) => prev.filter((j) => j.id !== id));
       setCounts((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }));
@@ -378,22 +367,18 @@ export const JobsView: React.FC<JobsViewProps> = ({
       });
     }, 250);
 
-    // Step 4: Fire backend delete + notify parent
     try {
       await jobApi.deleteJob(id);
       onDeleteJob(id);
       showToast('Job deleted successfully!');
 
-      // Step 5: Silent refresh in background after 2s to sync counts
       setTimeout(() => {
-        // Keep the deleted ID in ref for 5 more seconds to avoid re-appearance
         setTimeout(() => {
           deletedIdsRef.current.delete(id);
         }, 5000);
         fetchJobs();
       }, 2000);
     } catch (err: any) {
-      // Rollback on failure
       deletedIdsRef.current.delete(id);
       setDeletingIds((prev) => {
         const next = new Set(prev);
@@ -477,7 +462,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
     </div>
   );
 
-  // ─── Notice Period Badge Component (RE-USED in all rows) ───
   const NoticePeriodBadge = ({ notice, size = 'sm' }: { notice: string; size?: 'sm' | 'md' }) => {
     if (!notice) return null;
     const isSmall = size === 'sm';
@@ -490,6 +474,32 @@ export const JobsView: React.FC<JobsViewProps> = ({
       >
         <span className={`material-symbols-outlined ${isSmall ? 'text-[11px]' : 'text-[13px]'}`}>schedule</span>
         <span>{notice}</span>
+      </span>
+    );
+  };
+
+  // ─── Renders Recruiter Poster Meta block to easily identify listing source ───
+  const PostedByMeta = ({ job }: { job: JobItem }) => {
+    const recruiterInfo = job.recruiterId && typeof job.recruiterId === 'object' ? job.recruiterId : null;
+
+    if (!recruiterInfo) {
+      // If no populated recruiter, check if it was posted by admin directly
+      const isDirectAdmin = job.recruiterEmail?.includes('admin') || !job.recruiterEmail;
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded font-extrabold">
+          <span className="material-symbols-outlined text-[12px]">security</span>
+          Posted By: Admin
+        </span>
+      );
+    }
+
+    return (
+      <span 
+        className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold cursor-help"
+        title={`Contact Name: ${recruiterInfo.name || 'N/A'}\nEmail: ${recruiterInfo.email || 'N/A'}\nPhone: ${recruiterInfo.phone || recruiterInfo.mobile || 'N/A'}`}
+      >
+        <span className="material-symbols-outlined text-[12px] text-amber-600">badge</span>
+        Posted By: {recruiterInfo.name || 'Recruiter'}
       </span>
     );
   };
@@ -833,7 +843,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
                             <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        
+                        {/* ─── Verification & Poster Source Meta ─── */}
+                        <div className="mt-1">
+                          <PostedByMeta job={job} />
+                        </div>
+
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           {job.isNew && (
                             <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px] leading-none">
                               NEW
@@ -1044,6 +1060,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           <StatusBadge status={job.status} />
                         </div>
 
+                        {/* Verification & Poster Source Meta on Tablet */}
+                        <div className="mt-1.5">
+                          <PostedByMeta job={job} />
+                        </div>
+
                         <div className="grid grid-cols-3 gap-3 mt-3">
                           <div>
                             <div className="flex items-center gap-1 mb-0.5">
@@ -1080,7 +1101,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Extra Info Row — with prominent Notice Period */}
+                        {/* Extra Info Row — with Notice Period */}
                         {(job.experienceRange || job.noticePeriod || job.organizationSize) && (
                           <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                             {job.experienceRange && (
@@ -1190,6 +1211,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           <StatusBadge status={job.status} />
                         </div>
 
+                        {/* Verification & Poster Source Meta on Mobile */}
+                        <div className="mt-1">
+                          <PostedByMeta job={job} />
+                        </div>
+
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-[11px]">
                           <span className="flex items-center gap-1 text-on-surface-variant">
                             <span className="material-symbols-outlined text-[13px] text-outline">location_on</span>
@@ -1203,7 +1229,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           <span className="text-outline">{job.jobType}</span>
                         </div>
 
-                        {/* Mobile: Notice Period Badge (prominent) */}
+                        {/* Mobile: Notice Period Badge */}
                         {(job.experienceRange || job.noticePeriod) && (
                           <div className="flex flex-wrap items-center gap-2 mt-2">
                             {job.experienceRange && (

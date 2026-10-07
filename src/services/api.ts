@@ -132,10 +132,18 @@ export const jobApi = {
 
   async createJob(payload: any, logoFile?: File | null, imageFiles?: File[]) {
     const hasFiles = !!(logoFile || (imageFiles && imageFiles.length > 0));
+    
+    // Any job posted directly from the Admin Portal is immediately Live and Approved
+    const adjustedPayload = { 
+      ...payload, 
+      status: 'Live',
+      approvalStatus: 'approved',
+      isActive: true
+    };
 
     let res;
     if (hasFiles) {
-      const form = buildFormData(payload, logoFile || null, imageFiles || []);
+      const form = buildFormData(adjustedPayload, logoFile || null, imageFiles || []);
       res = await safeFetch(`${API_BASE_URL}/jobs`, {
         method: 'POST',
         headers: { ...getAuthHeader() },
@@ -145,7 +153,7 @@ export const jobApi = {
       res = await safeFetch(`${API_BASE_URL}/jobs`, {
         method: 'POST',
         headers: getJsonHeaders(),
-        body: JSON.stringify(payload),
+        body: JSON.stringify(adjustedPayload),
       });
     }
 
