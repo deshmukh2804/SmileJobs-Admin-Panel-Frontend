@@ -17,30 +17,14 @@ interface JobsViewProps {
   onExport: () => void;
 }
 
-// ============ OFFICIAL WHATSAPP SVG ICON ============
 const WhatsAppIcon = ({ active, size = 14 }: { active: boolean; size?: number }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill={active ? '#25D366' : '#9CA3AF'}
-    className="shrink-0 transition-colors"
-  >
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} fill={active ? '#25D366' : '#9CA3AF'} className="shrink-0 transition-colors">
     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
   </svg>
 );
 
-// ============ OFFICIAL PHONE ICON ============
 const PhoneIcon = ({ active, size = 14 }: { active: boolean; size?: number }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill={active ? '#6750A4' : '#9CA3AF'}
-    className="shrink-0 transition-colors"
-  >
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} fill={active ? '#6750A4' : '#9CA3AF'} className="shrink-0 transition-colors">
     <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57-.35-.11-.74-.03-1.02.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.58l2.2-2.21c.28-.27.36-.66.25-1.01C8.7 6.45 8.5 5.25 8.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1zM19 12h2c0-4.97-4.03-9-9-9v2c3.87 0 7 3.13 7 7zm-4 0h2c0-2.76-2.24-5-5-5v2c1.66 0 3 1.34 3 3z" />
   </svg>
 );
@@ -61,6 +45,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [jobTypeFilter, setJobTypeFilter] = useState('All');
   const [workModeFilter, setWorkModeFilter] = useState('All');
+  // ✅ NEW: Posted-By source filter
+  const [postedByFilter, setPostedByFilter] = useState<'All' | 'admin' | 'recruiter'>('All');
 
   const [apiJobs, setApiJobs] = useState<JobItem[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
@@ -70,17 +56,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  // ⚡ Track jobs currently being deleted for smooth fade-out animation
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  // ⚡ Track locally-deleted IDs to prevent re-appearance during refresh race
   const deletedIdsRef = useRef<Set<string>>(new Set());
-  // ⚡ Track pending refresh to prevent double-fetches
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [counts, setCounts] = useState({ total: 0, live: 0, pending: 0, rejected: 0, expired: 0 });
+  const [counts, setCounts] = useState({ total: 0, live: 0, pending: 0, rejected: 0, expired: 0, adminPosted: 0, recruiterPosted: 0 });
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
 
-  // ⚡ Use apiJobs when loaded, but always filter out locally-deleted IDs
   const jobs = useMemo(() => {
     const source = apiJobs.length > 0 ? apiJobs : propJobs;
     if (deletedIdsRef.current.size === 0) return source;
@@ -92,19 +74,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  /* ═══════════════════════════════════════════════════════════════
-     TRANSFORM JOB — Maps ALL backend fields to frontend JobItem
-     ═══════════════════════════════════════════════════════════════ */
   const transformJob = useCallback((job: any, whatsappData?: any): JobItem => {
     const companyName = job.companyName || job.company || '';
     const initials =
       job.companyInitials ||
-      companyName
-        .split(' ')
-        .map((w: string) => w[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2) ||
+      companyName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) ||
       'CF';
 
     let logoUrl: string | null = null;
@@ -126,8 +100,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
     return {
       id: job._id || job.id,
       title: job.title || '',
-
-      // ─── Company Info (ALL FIELDS) ───
       company: companyName,
       companyName: companyName,
       companyInitials: initials,
@@ -139,42 +111,27 @@ export const JobsView: React.FC<JobsViewProps> = ({
       organizationSize: job.organizationSize || job.company?.organizationSize || '',
       companyAddress: job.companyAddress || job.company?.address || {},
       companyImages: Array.isArray(job.companyImages) ? job.companyImages : [],
-
-      // ─── Location ───
       location: job.locationDisplay || job.location?.city || '',
       locationDetails: job.location && typeof job.location === 'object' ? job.location : {},
-
-      // ─── Work Details ───
       workMode: job.workMode || 'On-site',
       jobType: job.jobType || 'Full-Time',
       department: job.department || '',
       role: job.role || '',
       qualification: job.qualification || '',
-
-      // ─── Salary ───
       salaryRange: job.salaryRange || 'Not Disclosed',
       salaryPeriod: job.salary?.period ? `Per ${job.salary.period}` : 'Annual',
       salary: job.salary || {},
-
-      // ─── Experience & Notice Period ───
       experience: job.experience || {},
       experienceRange,
       noticePeriod: job.noticePeriod || '',
-
-      // ─── Status Flags ───
       status: job.status || 'Live',
+      approvalStatus: job.approvalStatus || '',
       featured: job.featured || false,
       isNew: job.isNew || false,
       isActive: job.isActive !== false,
-
-      // ─── Metrics ───
       applicantsCount: job.applicantsCount || 0,
       applicantsCap: job.applicantsCap || 100,
-
-      // ─── Contact Visibility ───
       contactVisibility: job.contactVisibility || { whatsapp: false, mobile: false },
-
-      // ─── Job Description & Content ───
       description: job.jobDescription || job.description || '',
       jobDescription: job.jobDescription || job.description || '',
       requirements: Array.isArray(job.requirements) ? job.requirements : [],
@@ -182,29 +139,25 @@ export const JobsView: React.FC<JobsViewProps> = ({
       benefits: Array.isArray(job.benefits) ? job.benefits : [],
       skills: Array.isArray(job.skills) ? job.skills : [],
       languages: Array.isArray(job.languages) ? job.languages : [],
-
-      // ─── Schedule ───
       jobTiming: job.jobTiming || '',
       workingDays: job.workingDays || '',
-
-      // ─── Recruiter Contact ───
       contactPerson: job.contactPerson || {},
       recruiterWhatsappNumber: job.recruiterWhatsappNumber || '',
       recruiterMobileNumber: job.recruiterMobileNumber || '',
       recruiterEmail: job.recruiterEmail || '',
-      recruiterId: job.recruiterId, // Populated from backend connection
-
-      // ─── Application ───
+      recruiterId: job.recruiterId,
+      // ✅ NEW Poster Metadata
+      postedBy: job.postedBy || 'recruiter',
+      postedByUserId: job.postedByUserId || '',
+      postedByName: job.postedByName || '',
+      postedByEmail: job.postedByEmail || '',
+      postedByRole: job.postedByRole || '',
       applicationUrl: job.applicationUrl || '',
       noPaymentInvolved: job.noPaymentInvolved,
-
-      // ─── Timestamps ───
       postedDate: job.postedDate || '',
       postedAt: job.postedAt || job.createdAt || '',
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
-
-      // ─── Admin / Meta ───
       rejectionReason: job.rejectionReason || '',
       whatsapp: whatsappData || job.whatsapp || { enabled: false },
       notes: job.notes || '',
@@ -231,6 +184,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         search: searchQuery || undefined,
         jobType: jobTypeFilter !== 'All' ? jobTypeFilter : undefined,
         workMode: workModeFilter !== 'All' ? workModeFilter : undefined,
+        postedBy: postedByFilter !== 'All' ? postedByFilter : undefined,
         page: pagination.page,
         limit: pagination.limit,
       };
@@ -247,7 +201,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
           .filter((j: JobItem) => !deletedIdsRef.current.has(j.id));
 
         setApiJobs(transformedJobs);
-        if (response.counts) setCounts(response.counts);
+        if (response.counts) setCounts({ ...counts, ...response.counts });
         if (response.pagination) setPagination((prev) => ({ ...prev, ...response.pagination }));
       }
     } catch (err: any) {
@@ -256,16 +210,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
     } finally {
       setIsLoadingJobs(false);
     }
-  }, [activeTab, searchQuery, jobTypeFilter, workModeFilter, pagination.page, pagination.limit, transformJob]);
+  }, [activeTab, searchQuery, jobTypeFilter, workModeFilter, postedByFilter, pagination.page, pagination.limit, transformJob]);
 
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
 
   const scheduleRefresh = useCallback(() => {
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     refreshTimerRef.current = setTimeout(() => {
       fetchJobs();
       refreshTimerRef.current = null;
@@ -312,7 +264,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
     setApiJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: 'Rejected' as any } : j)));
     setCounts((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1), rejected: prev.rejected + 1 }));
     try {
-      await jobApi.rejectJob(id);
+      await jobApi.rejectJob(id, 'Rejected via Admin Panel');
       onRejectJob(id);
       showToast('Job rejected');
       scheduleRefresh();
@@ -373,9 +325,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
       showToast('Job deleted successfully!');
 
       setTimeout(() => {
-        setTimeout(() => {
-          deletedIdsRef.current.delete(id);
-        }, 5000);
+        setTimeout(() => deletedIdsRef.current.delete(id), 5000);
         fetchJobs();
       }, 2000);
     } catch (err: any) {
@@ -402,6 +352,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
       if (activeTab === 'Drafts' && job.status !== 'Draft') return false;
       if (activeTab === 'Feature' && !job.featured) return false;
 
+      if (postedByFilter !== 'All' && job.postedBy !== postedByFilter) return false;
+
       if (
         searchQuery &&
         !job.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -416,12 +368,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
       return true;
     });
-  }, [jobs, activeTab, searchQuery, workModeFilter, jobTypeFilter]);
+  }, [jobs, activeTab, searchQuery, workModeFilter, jobTypeFilter, postedByFilter]);
 
   const clearAllFilters = () => {
     setSearchQuery('');
     setJobTypeFilter('All');
     setWorkModeFilter('All');
+    setPostedByFilter('All');
     setActiveTab('All jobs');
   };
 
@@ -447,16 +400,10 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
   const ContactBadges = ({ job, size = 14 }: { job: JobItem; size?: number }) => (
     <div className="inline-flex items-center gap-1 shrink-0">
-      <span
-        className="inline-flex items-center justify-center w-5 h-5 rounded"
-        title={job.contactVisibility?.whatsapp ? `WhatsApp visible: +91 ${job.recruiterWhatsappNumber || 'No number'}` : 'WhatsApp hidden'}
-      >
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded">
         <WhatsAppIcon active={!!job.contactVisibility?.whatsapp} size={size} />
       </span>
-      <span
-        className="inline-flex items-center justify-center w-5 h-5 rounded"
-        title={job.contactVisibility?.mobile ? `Phone visible: +91 ${job.recruiterMobileNumber || 'No number'}` : 'Phone hidden'}
-      >
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded">
         <PhoneIcon active={!!job.contactVisibility?.mobile} size={size} />
       </span>
     </div>
@@ -466,40 +413,40 @@ export const JobsView: React.FC<JobsViewProps> = ({
     if (!notice) return null;
     const isSmall = size === 'sm';
     return (
-      <span
-        className={`inline-flex items-center gap-1 rounded font-bold whitespace-nowrap ${
-          isSmall ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-[11px]'
-        } bg-[#EAE8F4] text-[#6750A4] border border-[#6750A4]/20`}
-        title={`Notice Period: ${notice}`}
-      >
+      <span className={`inline-flex items-center gap-1 rounded font-bold whitespace-nowrap ${isSmall ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-[11px]'} bg-[#EAE8F4] text-[#6750A4] border border-[#6750A4]/20`}>
         <span className={`material-symbols-outlined ${isSmall ? 'text-[11px]' : 'text-[13px]'}`}>schedule</span>
         <span>{notice}</span>
       </span>
     );
   };
 
-  // ─── Renders Recruiter Poster Meta block to easily identify listing source ───
+  // ─── POSTED BY META BADGE (Admin OR Recruiter with details) ───
   const PostedByMeta = ({ job }: { job: JobItem }) => {
-    const recruiterInfo = job.recruiterId && typeof job.recruiterId === 'object' ? job.recruiterId : null;
+    const isAdmin = job.postedBy === 'admin';
+    const posterName = job.postedByName || (job.recruiterId && typeof job.recruiterId === 'object' ? (job.recruiterId as any).name : '') || 'Unknown';
+    const posterEmail = job.postedByEmail || (job.recruiterId && typeof job.recruiterId === 'object' ? (job.recruiterId as any).email : '') || '';
 
-    if (!recruiterInfo) {
-      // If no populated recruiter, check if it was posted by admin directly
-      const isDirectAdmin = job.recruiterEmail?.includes('admin') || !job.recruiterEmail;
+    if (isAdmin) {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded font-extrabold">
-          <span className="material-symbols-outlined text-[12px]">security</span>
-          Posted By: Admin
+        <span
+          className="inline-flex items-center gap-1 text-[10px] text-blue-900 bg-blue-50 border border-blue-300 px-1.5 py-0.5 rounded-md font-extrabold cursor-help"
+          title={`Posted via Admin Portal\nName: ${posterName}\nEmail: ${posterEmail}`}
+        >
+          <span className="material-symbols-outlined text-[12px] text-blue-700">verified_user</span>
+          <span>ADMIN POST</span>
+          <span className="font-normal text-[9px] text-blue-700">({posterName.split(' ')[0]})</span>
         </span>
       );
     }
 
     return (
-      <span 
-        className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold cursor-help"
-        title={`Contact Name: ${recruiterInfo.name || 'N/A'}\nEmail: ${recruiterInfo.email || 'N/A'}\nPhone: ${recruiterInfo.phone || recruiterInfo.mobile || 'N/A'}`}
+      <span
+        className="inline-flex items-center gap-1 text-[10px] text-amber-900 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded-md font-extrabold cursor-help"
+        title={`Posted by External Recruiter\nName: ${posterName}\nEmail: ${posterEmail}`}
       >
-        <span className="material-symbols-outlined text-[12px] text-amber-600">badge</span>
-        Posted By: {recruiterInfo.name || 'Recruiter'}
+        <span className="material-symbols-outlined text-[12px] text-amber-700">badge</span>
+        <span>RECRUITER</span>
+        <span className="font-normal text-[9px] text-amber-700">({posterName.split(' ')[0] || 'User'})</span>
       </span>
     );
   };
@@ -539,25 +486,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-5">
-      {/* Toast */}
       {toast && (
-        <div
-          className={`fixed top-20 right-4 sm:right-6 z-50 px-4 py-3 rounded-xl shadow-2xl border max-w-sm animate-in fade-in slide-in-from-right ${
-            toast.type === 'success'
-              ? 'bg-[#E5F2EB] border-[#5F8A72]/40 text-[#24593C]'
-              : 'bg-error-container border-error/30 text-on-error-container'
-          }`}
-        >
+        <div className={`fixed top-20 right-4 sm:right-6 z-50 px-4 py-3 rounded-xl shadow-2xl border max-w-sm animate-in fade-in slide-in-from-right ${toast.type === 'success' ? 'bg-[#E5F2EB] border-[#5F8A72]/40 text-[#24593C]' : 'bg-error-container border-error/30 text-on-error-container'}`}>
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <span className="material-symbols-outlined text-[18px] shrink-0">
-              {toast.type === 'success' ? 'check_circle' : 'error'}
-            </span>
+            <span className="material-symbols-outlined text-[18px] shrink-0">{toast.type === 'success' ? 'check_circle' : 'error'}</span>
             <span>{toast.msg}</span>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl shadow-2xl border border-error/30 p-6">
@@ -570,33 +507,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 <p className="text-xs text-outline">This action cannot be undone.</p>
               </div>
             </div>
-            <p className="text-sm text-on-surface-variant my-4">
-              Are you sure you want to permanently delete this job listing? All associated Cloudinary images and data will be removed from MongoDB.
-            </p>
+            <p className="text-sm text-on-surface-variant my-4">Are you sure you want to permanently delete this job listing?</p>
             <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-lg bg-surface-container text-on-surface text-sm font-semibold hover:bg-surface-container-high cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteJob(deleteConfirmId)}
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-lg bg-error text-white text-sm font-bold hover:bg-error/90 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {isDeleting ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-[16px]">delete</span>
-                    <span>Yes, Delete</span>
-                  </>
-                )}
+              <button onClick={() => setDeleteConfirmId(null)} disabled={isDeleting} className="px-4 py-2 rounded-lg bg-surface-container text-on-surface text-sm font-semibold hover:bg-surface-container-high cursor-pointer disabled:opacity-50">Cancel</button>
+              <button onClick={() => handleDeleteJob(deleteConfirmId)} disabled={isDeleting} className="px-4 py-2 rounded-lg bg-error text-white text-sm font-bold hover:bg-error/90 cursor-pointer flex items-center gap-1.5 disabled:opacity-50">
+                {isDeleting ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /><span>Deleting...</span></>) : (<><span className="material-symbols-outlined text-[16px]">delete</span><span>Yes, Delete</span></>)}
               </button>
             </div>
           </div>
@@ -607,9 +522,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         <div className="p-2.5 rounded-lg bg-[#FFF3D6] border border-[#C58A3A]/30 text-[#8C5D00] text-[11px] flex items-center gap-2">
           <span className="material-symbols-outlined text-[14px] shrink-0">cloud_off</span>
           <span className="flex-1">Backend connection issue: {apiError}</span>
-          <button onClick={fetchJobs} className="text-[#C58A3A] hover:underline font-semibold shrink-0">
-            Retry
-          </button>
+          <button onClick={fetchJobs} className="text-[#C58A3A] hover:underline font-semibold shrink-0">Retry</button>
         </div>
       )}
 
@@ -617,31 +530,19 @@ export const JobsView: React.FC<JobsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded font-label-sm text-[10px] bg-secondary-fixed text-on-secondary-fixed font-bold">
-              Governance Console
-            </span>
-            {isLoadingJobs && (
-              <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            )}
+            <span className="px-2 py-0.5 rounded font-label-sm text-[10px] bg-secondary-fixed text-on-secondary-fixed font-bold">Governance Console</span>
+            {isLoadingJobs && (<span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />)}
           </div>
           <h1 className="font-headline-lg text-primary font-bold mt-1">Job Management</h1>
-          <p className="font-body-md text-on-surface-variant">
-            Review, approve, edit, and orchestrate career opportunities.
-          </p>
+          <p className="font-body-md text-on-surface-variant">Review, approve, edit, and orchestrate career opportunities.</p>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <button
-            onClick={onExport}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-label-md hover:bg-surface-container shadow-xs transition-colors cursor-pointer text-sm"
-          >
+          <button onClick={onExport} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-label-md hover:bg-surface-container shadow-xs transition-colors cursor-pointer text-sm">
             <span className="material-symbols-outlined text-[18px]">download</span>
             <span className="hidden sm:inline">Export</span>
           </button>
-          <button
-            onClick={onOpenPostJob}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary font-bold shadow-md hover:bg-primary-container transition-all cursor-pointer text-sm active:scale-95"
-          >
+          <button onClick={onOpenPostJob} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary font-bold shadow-md hover:bg-primary-container transition-all cursor-pointer text-sm active:scale-95">
             <span className="material-symbols-outlined text-[18px]">add</span>
             <span>Post New Job</span>
           </button>
@@ -649,20 +550,22 @@ export const JobsView: React.FC<JobsViewProps> = ({
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         {[
           { label: 'Total Jobs', value: counts.total, icon: 'list_alt' },
           { label: 'Live', value: counts.live, icon: 'check_circle', filter: 'Live' },
           { label: 'Pending', value: counts.pending, icon: 'pending', filter: 'Pending' },
           { label: 'Rejected', value: counts.rejected, icon: 'block', filter: 'Rejected' },
-          { label: 'Closed', value: jobs.filter((j) => j.status === 'Closed').length, icon: 'archive', filter: 'Closed' },
-        ].map((kpi) => (
+          { label: 'Admin Posted', value: counts.adminPosted, icon: 'verified_user', postedFilter: 'admin' },
+          { label: 'Recruiter Posted', value: counts.recruiterPosted, icon: 'badge', postedFilter: 'recruiter' },
+        ].map((kpi: any) => (
           <div
             key={kpi.label}
-            onClick={() => kpi.filter && setActiveTab(kpi.filter as any)}
-            className={`bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-variant shadow-xs transition-all ${
-              kpi.filter ? 'cursor-pointer hover:border-primary hover:shadow-md' : ''
-            }`}
+            onClick={() => {
+              if (kpi.filter) setActiveTab(kpi.filter as any);
+              if (kpi.postedFilter) setPostedByFilter(kpi.postedFilter as any);
+            }}
+            className={`bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-variant shadow-xs transition-all ${(kpi.filter || kpi.postedFilter) ? 'cursor-pointer hover:border-primary hover:shadow-md' : ''}`}
           >
             <div className="flex items-center justify-between">
               <span className="font-label-md text-outline text-[11px] sm:text-xs">{kpi.label}</span>
@@ -670,9 +573,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 <span className="material-symbols-outlined text-[14px] sm:text-[16px]">{kpi.icon}</span>
               </span>
             </div>
-            <h3 className="text-xl sm:text-2xl text-primary font-bold tracking-tight mt-1 sm:mt-2">
-              {kpi.value.toLocaleString()}
-            </h3>
+            <h3 className="text-xl sm:text-2xl text-primary font-bold tracking-tight mt-1 sm:mt-2">{kpi.value.toLocaleString()}</h3>
           </div>
         ))}
       </div>
@@ -680,23 +581,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
       {/* Tabs list */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 border-b border-surface-variant scrollbar-hide">
         {tabList.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              activeTab === tab.key
-                ? 'bg-primary text-on-primary shadow-xs'
-                : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
-            }`}
-          >
+          <button key={tab.key} onClick={() => setActiveTab(tab.key as any)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${activeTab === tab.key ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
             <span>{tab.label}</span>
-            <span
-              className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                activeTab === tab.key ? 'bg-white/20' : 'bg-black/10'
-              }`}
-            >
-              {getTabCount(tab.key).toLocaleString()}
-            </span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeTab === tab.key ? 'bg-white/20' : 'bg-black/10'}`}>{getTabCount(tab.key).toLocaleString()}</span>
           </button>
         ))}
       </div>
@@ -705,32 +592,28 @@ export const JobsView: React.FC<JobsViewProps> = ({
       <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-variant shadow-xs">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           <div className="relative flex-1 min-w-0">
-            <span className="material-symbols-outlined text-[18px] text-outline absolute left-3 top-1/2 -translate-y-1/2">
-              search
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search Job title, Company, ID..."
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none focus:border-primary text-xs"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">close</span>
-              </button>
-            )}
+            <span className="material-symbols-outlined text-[18px] text-outline absolute left-3 top-1/2 -translate-y-1/2">search</span>
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search Job title, Company, ID..." className="w-full pl-9 pr-8 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none focus:border-primary text-xs" />
+            {searchQuery && (<button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface cursor-pointer"><span className="material-symbols-outlined text-[16px]">close</span></button>)}
           </div>
 
           <div className="flex items-center gap-2 text-xs flex-wrap">
+            {/* ✅ NEW: Posted-By Filter */}
             <select
-              value={jobTypeFilter}
-              onChange={(e) => setJobTypeFilter(e.target.value)}
-              className="px-2.5 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none text-xs"
+              value={postedByFilter}
+              onChange={(e) => setPostedByFilter(e.target.value as any)}
+              className={`px-2.5 py-2 rounded-lg border focus:outline-none text-xs font-bold ${
+                postedByFilter === 'admin' ? 'bg-blue-50 text-blue-900 border-blue-300' :
+                postedByFilter === 'recruiter' ? 'bg-amber-50 text-amber-900 border-amber-300' :
+                'bg-surface-container-low text-on-surface border-outline-variant'
+              }`}
             >
+              <option value="All">📋 Source: All</option>
+              <option value="admin">🛡️ Admin Posted</option>
+              <option value="recruiter">👤 Recruiter Posted</option>
+            </select>
+
+            <select value={jobTypeFilter} onChange={(e) => setJobTypeFilter(e.target.value)} className="px-2.5 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none text-xs">
               <option value="All">Type: All</option>
               <option value="Full-Time">Full-Time</option>
               <option value="Part-Time">Part-Time</option>
@@ -738,21 +621,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <option value="Internship">Internship</option>
             </select>
 
-            <select
-              value={workModeFilter}
-              onChange={(e) => setWorkModeFilter(e.target.value)}
-              className="px-2.5 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none text-xs"
-            >
+            <select value={workModeFilter} onChange={(e) => setWorkModeFilter(e.target.value)} className="px-2.5 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none text-xs">
               <option value="All">Mode: All</option>
               <option value="On-site">On-site</option>
               <option value="Hybrid">Hybrid</option>
               <option value="Remote">Remote</option>
             </select>
 
-            <button
-              onClick={clearAllFilters}
-              className="px-2.5 py-2 rounded-lg text-outline hover:text-primary flex items-center gap-1 cursor-pointer"
-            >
+            <button onClick={clearAllFilters} className="px-2.5 py-2 rounded-lg text-outline hover:text-primary flex items-center gap-1 cursor-pointer">
               <span className="material-symbols-outlined text-[16px]">restart_alt</span>
               <span>Reset</span>
             </button>
@@ -771,17 +647,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
           <span className="material-symbols-outlined text-6xl text-outline mb-3">work_off</span>
           <p className="font-bold text-primary mb-1">No job listings found</p>
           <p className="text-xs text-outline mb-4">Try relaxing filters or create your first job.</p>
-          <button
-            onClick={onOpenPostJob}
-            className="px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold cursor-pointer inline-flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            Create First Job
+          <button onClick={onOpenPostJob} className="px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold cursor-pointer inline-flex items-center gap-1">
+            <span className="material-symbols-outlined text-[16px]">add</span>Create First Job
           </button>
         </div>
       ) : (
         <div className="bg-surface-container-lowest rounded-xl border border-surface-variant shadow-xs overflow-hidden">
-          {/* Desktop Header */}
           <div className="hidden lg:grid lg:grid-cols-[minmax(0,2.5fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_100px_100px_minmax(0,1.2fr)] gap-4 px-5 py-3 bg-surface-container border-b border-surface-variant text-[11px] font-bold text-outline uppercase tracking-wider">
             <div>Job Details</div>
             <div>Location & Mode</div>
@@ -798,9 +669,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               return (
                 <div
                   key={job.id}
-                  className={`group transition-all duration-300 hover:bg-surface-container-low/40 ${
-                    job.featured ? 'bg-[#C58A3A]/[0.03]' : ''
-                  }`}
+                  className={`group transition-all duration-300 hover:bg-surface-container-low/40 ${job.featured ? 'bg-[#C58A3A]/[0.03]' : ''} ${job.postedBy === 'admin' ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-amber-500'}`}
                   style={{
                     opacity: isBeingDeleted ? 0 : 1,
                     transform: isBeingDeleted ? 'translateX(-20px) scale(0.98)' : 'translateX(0) scale(1)',
@@ -812,58 +681,29 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 >
                   {/* ========== DESKTOP ROW ========== */}
                   <div className="hidden lg:grid lg:grid-cols-[minmax(0,2.5fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_100px_100px_minmax(0,1.2fr)] gap-4 px-5 py-3.5 items-center">
-                    {/* Col 1: Job Details */}
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
-                        {job.companyLogo ? (
-                          <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
-                        ) : (
-                          job.companyInitials
-                        )}
+                        {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <h3
-                            onClick={() => handleViewJob(job)}
-                            className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
-                            title={job.title}
-                          >
-                            {job.title}
-                          </h3>
-                          {job.featured && (
-                            <span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0" title="Featured">
-                              star
-                            </span>
-                          )}
+                          <h3 onClick={() => handleViewJob(job)} className="font-bold text-primary text-sm cursor-pointer hover:underline truncate" title={job.title}>{job.title}</h3>
+                          {job.featured && (<span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0">star</span>)}
                           <ContactBadges job={job} size={14} />
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                           <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
-                          {job.isCompanyVerified && (
-                            <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
-                          )}
+                          {job.isCompanyVerified && (<span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>)}
                         </div>
-                        
-                        {/* ─── Verification & Poster Source Meta ─── */}
-                        <div className="mt-1">
-                          <PostedByMeta job={job} />
-                        </div>
-
+                        <div className="mt-1"><PostedByMeta job={job} /></div>
                         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                          {job.isNew && (
-                            <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px] leading-none">
-                              NEW
-                            </span>
-                          )}
+                          {job.isNew && (<span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px] leading-none">NEW</span>)}
                           <span className="text-[10px] text-outline">{job.jobType}</span>
-                          {job.industry && (
-                            <span className="text-[10px] text-outline">· {job.industry}</span>
-                          )}
+                          {job.industry && (<span className="text-[10px] text-outline">· {job.industry}</span>)}
                         </div>
                       </div>
                     </div>
 
-                    {/* Col 2: Location & Mode */}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="material-symbols-outlined text-[14px] text-outline shrink-0">location_on</span>
@@ -881,141 +721,46 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       )}
                     </div>
 
-                    {/* Col 3: Salary & Notice */}
                     <div className="min-w-0">
                       <div className="text-sm font-bold text-primary truncate">{job.salaryRange}</div>
                       <div className="text-[10px] text-outline mt-0.5">{job.salaryPeriod || 'Annual'}</div>
-                      {job.experienceRange && (
-                        <div className="text-[10px] text-outline mt-1 truncate" title="Experience">
-                          🎯 {job.experienceRange}
-                        </div>
-                      )}
-                      {job.noticePeriod && (
-                        <div className="mt-1.5">
-                          <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
-                        </div>
-                      )}
+                      {job.experienceRange && (<div className="text-[10px] text-outline mt-1 truncate">🎯 {job.experienceRange}</div>)}
+                      {job.noticePeriod && (<div className="mt-1.5"><NoticePeriodBadge notice={job.noticePeriod} size="sm" /></div>)}
                     </div>
 
-                    {/* Col 4: Applicants */}
                     <div className="text-center">
-                      <div className="text-sm font-bold text-primary">
-                        {job.applicantsCount}
-                        <span className="text-outline font-normal text-[10px]">/{job.applicantsCap}</span>
-                      </div>
+                      <div className="text-sm font-bold text-primary">{job.applicantsCount}<span className="text-outline font-normal text-[10px]">/{job.applicantsCap}</span></div>
                       <div className="w-full max-w-[80px] mx-auto bg-surface-container h-1 rounded-full overflow-hidden mt-1">
-                        <div
-                          className="bg-primary h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%`,
-                          }}
-                        />
+                        <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%` }} />
                       </div>
                     </div>
 
-                    {/* Col 5: Status */}
-                    <div className="flex justify-center">
-                      <StatusBadge status={job.status} />
-                    </div>
+                    <div className="flex justify-center"><StatusBadge status={job.status} /></div>
 
-                    {/* Col 6: Actions */}
                     <div className="flex items-center justify-end gap-1">
                       {job.status === 'Pending Approval' ? (
                         <>
-                          <button
-                            onClick={() => handleApproveJob(job.id)}
-                            className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center hover:opacity-90 cursor-pointer transition-opacity"
-                            title="Approve"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">check</span>
+                          <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center hover:opacity-90 cursor-pointer transition-opacity" title="Approve"><span className="material-symbols-outlined text-[16px]">check</span></button>
+                          <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center hover:bg-error-container/80 cursor-pointer transition-colors" title="Reject"><span className="material-symbols-outlined text-[16px]">close</span></button>
+                          <button onClick={() => handleViewJob(job)} disabled={isLoadingJobDetail === job.id} className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50" title="View">
+                            {isLoadingJobDetail === job.id ? (<span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />) : (<span className="material-symbols-outlined text-[16px]">visibility</span>)}
                           </button>
-                          <button
-                            onClick={() => handleRejectJob(job.id)}
-                            className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center hover:bg-error-container/80 cursor-pointer transition-colors"
-                            title="Reject"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">close</span>
-                          </button>
-                          <button
-                            onClick={() => handleViewJob(job)}
-                            disabled={isLoadingJobDetail === job.id}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
-                            title="View"
-                          >
-                            {isLoadingJobDetail === job.id ? (
-                              <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                            ) : (
-                              <span className="material-symbols-outlined text-[16px]">visibility</span>
-                            )}
-                          </button>
-                          {onEditJob && (
-                            <button
-                              onClick={() => onEditJob(job.id)}
-                              className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors"
-                              title="Edit"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">edit</span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setDeleteConfirmId(job.id)}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors"
-                            title="Delete"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">delete</span>
-                          </button>
+                          {onEditJob && (<button onClick={() => onEditJob(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors" title="Edit"><span className="material-symbols-outlined text-[16px]">edit</span></button>)}
+                          <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors" title="Delete"><span className="material-symbols-outlined text-[16px]">delete</span></button>
                         </>
                       ) : (
                         <>
-                          <button
-                            onClick={() => handleViewJob(job)}
-                            disabled={isLoadingJobDetail === job.id}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
-                            title="View"
-                          >
-                            {isLoadingJobDetail === job.id ? (
-                              <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                            ) : (
-                              <span className="material-symbols-outlined text-[16px]">visibility</span>
-                            )}
+                          <button onClick={() => handleViewJob(job)} disabled={isLoadingJobDetail === job.id} className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50" title="View">
+                            {isLoadingJobDetail === job.id ? (<span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />) : (<span className="material-symbols-outlined text-[16px]">visibility</span>)}
                           </button>
-                          {onEditJob && (
-                            <button
-                              onClick={() => onEditJob(job.id)}
-                              className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer hover:bg-primary-container transition-colors"
-                              title="Edit Job"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">edit</span>
-                              <span>Edit</span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleToggleFeature(job.id)}
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-surface-container cursor-pointer transition-colors ${
-                              job.featured ? 'text-[#C58A3A]' : 'text-outline hover:text-[#C58A3A]'
-                            }`}
-                            title={job.featured ? 'Unfeature' : 'Feature'}
-                          >
-                            <span className="material-symbols-outlined text-[16px]">
-                              {job.featured ? 'star' : 'star_border'}
-                            </span>
+                          {onEditJob && (<button onClick={() => onEditJob(job.id)} className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer hover:bg-primary-container transition-colors" title="Edit"><span className="material-symbols-outlined text-[14px]">edit</span><span>Edit</span></button>)}
+                          <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-surface-container cursor-pointer transition-colors ${job.featured ? 'text-[#C58A3A]' : 'text-outline hover:text-[#C58A3A]'}`} title={job.featured ? 'Unfeature' : 'Feature'}>
+                            <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
                           </button>
-                          <button
-                            onClick={() => handleToggleStatus(job.id)}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors"
-                            title={job.status === 'Live' ? 'Pause' : 'Activate'}
-                          >
-                            <span className="material-symbols-outlined text-[16px]">
-                              {job.status === 'Live' ? 'pause_circle' : 'play_circle'}
-                            </span>
+                          <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer transition-colors" title={job.status === 'Live' ? 'Pause' : 'Activate'}>
+                            <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
                           </button>
-                          <button
-                            onClick={() => setDeleteConfirmId(job.id)}
-                            className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors"
-                            title="Delete"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">delete</span>
-                          </button>
+                          <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error hover:bg-error-container/30 flex items-center justify-center cursor-pointer transition-colors" title="Delete"><span className="material-symbols-outlined text-[16px]">delete</span></button>
                         </>
                       )}
                     </div>
@@ -1025,45 +770,25 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   <div className="hidden md:block lg:hidden px-4 py-3">
                     <div className="flex items-start gap-3">
                       <div className="w-11 h-11 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-sm shadow-sm shrink-0 overflow-hidden">
-                        {job.companyLogo ? (
-                          <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
-                        ) : (
-                          job.companyInitials
-                        )}
+                        {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
                       </div>
-
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <h3
-                                onClick={() => handleViewJob(job)}
-                                className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
-                              >
-                                {job.title}
-                              </h3>
-                              {job.featured && (
-                                <span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0">star</span>
-                              )}
+                              <h3 onClick={() => handleViewJob(job)} className="font-bold text-primary text-sm cursor-pointer hover:underline truncate">{job.title}</h3>
+                              {job.featured && (<span className="material-symbols-outlined text-[14px] text-[#C58A3A] shrink-0">star</span>)}
                               <ContactBadges job={job} size={13} />
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
-                              {job.isCompanyVerified && (
-                                <span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>
-                              )}
-                              {job.industry && (
-                                <span className="text-[10px] text-outline">· {job.industry}</span>
-                              )}
+                              {job.isCompanyVerified && (<span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>)}
+                              {job.industry && (<span className="text-[10px] text-outline">· {job.industry}</span>)}
                             </div>
                           </div>
                           <StatusBadge status={job.status} />
                         </div>
-
-                        {/* Verification & Poster Source Meta on Tablet */}
-                        <div className="mt-1.5">
-                          <PostedByMeta job={job} />
-                        </div>
+                        <div className="mt-1.5"><PostedByMeta job={job} /></div>
 
                         <div className="grid grid-cols-3 gap-3 mt-3">
                           <div>
@@ -1087,88 +812,35 @@ export const JobsView: React.FC<JobsViewProps> = ({
                               <span className="material-symbols-outlined text-[12px] text-outline">group</span>
                               <span className="text-[10px] text-outline uppercase font-bold">Applicants</span>
                             </div>
-                            <span className="text-xs text-primary font-bold">
-                              {job.applicantsCount}/{job.applicantsCap}
-                            </span>
+                            <span className="text-xs text-primary font-bold">{job.applicantsCount}/{job.applicantsCap}</span>
                             <div className="w-full max-w-[80px] bg-surface-container h-1 rounded-full overflow-hidden mt-0.5">
-                              <div
-                                className="bg-primary h-full rounded-full"
-                                style={{
-                                  width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%`,
-                                }}
-                              />
+                              <div className="bg-primary h-full rounded-full" style={{ width: `${Math.min(100, Math.round((job.applicantsCount / job.applicantsCap) * 100))}%` }} />
                             </div>
                           </div>
                         </div>
 
-                        {/* Extra Info Row — with Notice Period */}
-                        {(job.experienceRange || job.noticePeriod || job.organizationSize) && (
-                          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                            {job.experienceRange && (
-                              <span className="text-[10px] text-outline flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[11px]">military_tech</span>
-                                {job.experienceRange}
-                              </span>
-                            )}
-                            {job.noticePeriod && (
-                              <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
-                            )}
-                            {job.organizationSize && (
-                              <span className="text-[10px] text-outline flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[11px]">groups</span>
-                                {job.organizationSize}
-                              </span>
-                            )}
-                          </div>
-                        )}
-
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-surface-variant/40">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {job.isNew && (
-                              <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px]">NEW</span>
-                            )}
+                            {job.isNew && (<span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px]">NEW</span>)}
                             <span className="text-[10px] text-outline">{job.jobType}</span>
                           </div>
-
                           <div className="flex items-center gap-0.5">
                             {job.status === 'Pending Approval' ? (
                               <>
-                                <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer" title="Approve">
-                                  <span className="material-symbols-outlined text-[16px]">check</span>
-                                </button>
-                                <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer" title="Reject">
-                                  <span className="material-symbols-outlined text-[16px]">close</span>
-                                </button>
+                                <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">check</span></button>
+                                <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">close</span></button>
                               </>
                             ) : (
                               <>
-                                <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}>
-                                  <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
-                                </button>
-                                <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer">
-                                  <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
-                                </button>
+                                <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}><span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span></button>
+                                <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span></button>
                               </>
                             )}
-                            <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer">
-                              <span className="material-symbols-outlined text-[16px]">delete</span>
+                            <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">delete</span></button>
+                            <button onClick={() => handleViewJob(job)} disabled={isLoadingJobDetail === job.id} className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer disabled:opacity-50">
+                              {isLoadingJobDetail === job.id ? (<span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />) : (<span className="material-symbols-outlined text-[16px]">visibility</span>)}
                             </button>
-                            <button
-                              onClick={() => handleViewJob(job)}
-                              disabled={isLoadingJobDetail === job.id}
-                              className="w-8 h-8 rounded-lg text-outline hover:text-primary flex items-center justify-center cursor-pointer disabled:opacity-50"
-                            >
-                              {isLoadingJobDetail === job.id ? (
-                                <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                              ) : (
-                                <span className="material-symbols-outlined text-[16px]">visibility</span>
-                              )}
-                            </button>
-                            {onEditJob && (
-                              <button onClick={() => onEditJob(job.id)} className="h-8 px-2 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer">
-                                <span className="material-symbols-outlined text-[14px]">edit</span>Edit
-                              </button>
-                            )}
+                            {onEditJob && (<button onClick={() => onEditJob(job.id)} className="h-8 px-2 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer"><span className="material-symbols-outlined text-[14px]">edit</span>Edit</button>)}
                           </div>
                         </div>
                       </div>
@@ -1179,42 +851,24 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   <div className="md:hidden px-3 py-3">
                     <div className="flex items-start gap-2.5">
                       <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
-                        {job.companyLogo ? (
-                          <img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />
-                        ) : (
-                          job.companyInitials
-                        )}
+                        {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
                       </div>
-
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <h3
-                                onClick={() => handleViewJob(job)}
-                                className="font-bold text-primary text-sm cursor-pointer hover:underline truncate"
-                              >
-                                {job.title}
-                              </h3>
-                              {job.featured && (
-                                <span className="material-symbols-outlined text-[12px] text-[#C58A3A] shrink-0">star</span>
-                              )}
+                              <h3 onClick={() => handleViewJob(job)} className="font-bold text-primary text-sm cursor-pointer hover:underline truncate">{job.title}</h3>
+                              {job.featured && (<span className="material-symbols-outlined text-[12px] text-[#C58A3A] shrink-0">star</span>)}
                               <ContactBadges job={job} size={12} />
                             </div>
                             <div className="flex items-center gap-1 mt-0.5">
                               <span className="text-[11px] text-on-surface-variant truncate">{job.company}</span>
-                              {job.isCompanyVerified && (
-                                <span className="material-symbols-outlined text-[11px] text-[#5F8A72] shrink-0">verified</span>
-                              )}
+                              {job.isCompanyVerified && (<span className="material-symbols-outlined text-[11px] text-[#5F8A72] shrink-0">verified</span>)}
                             </div>
                           </div>
                           <StatusBadge status={job.status} />
                         </div>
-
-                        {/* Verification & Poster Source Meta on Mobile */}
-                        <div className="mt-1">
-                          <PostedByMeta job={job} />
-                        </div>
+                        <div className="mt-1"><PostedByMeta job={job} /></div>
 
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-[11px]">
                           <span className="flex items-center gap-1 text-on-surface-variant">
@@ -1222,84 +876,38 @@ export const JobsView: React.FC<JobsViewProps> = ({
                             <span className="truncate max-w-[120px]">{job.location || 'N/A'}</span>
                           </span>
                           <span className="flex items-center gap-1 text-outline">
-                            <span className="material-symbols-outlined text-[13px]">work</span>
-                            {job.workMode}
+                            <span className="material-symbols-outlined text-[13px]">work</span>{job.workMode}
                           </span>
                           <span className="text-primary font-bold">{job.salaryRange}</span>
                           <span className="text-outline">{job.jobType}</span>
                         </div>
 
-                        {/* Mobile: Notice Period Badge */}
-                        {(job.experienceRange || job.noticePeriod) && (
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {job.experienceRange && (
-                              <span className="text-[10px] text-outline flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[11px]">military_tech</span>
-                                {job.experienceRange}
-                              </span>
-                            )}
-                            {job.noticePeriod && (
-                              <NoticePeriodBadge notice={job.noticePeriod} size="sm" />
-                            )}
-                          </div>
-                        )}
-
                         <div className="flex items-center gap-1.5 mt-2">
-                          {job.isNew && (
-                            <span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[8px]">NEW</span>
-                          )}
-                          <span className="text-[10px] text-outline">
-                            {job.applicantsCount}/{job.applicantsCap} applicants
-                          </span>
+                          {job.isNew && (<span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[8px]">NEW</span>)}
+                          <span className="text-[10px] text-outline">{job.applicantsCount}/{job.applicantsCap} applicants</span>
                         </div>
 
                         <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-surface-variant/40">
                           <div className="flex items-center gap-0.5">
                             {job.status === 'Pending Approval' ? (
                               <>
-                                <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer">
-                                  <span className="material-symbols-outlined text-[16px]">check</span>
-                                </button>
-                                <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer">
-                                  <span className="material-symbols-outlined text-[16px]">close</span>
-                                </button>
+                                <button onClick={() => handleApproveJob(job.id)} className="w-8 h-8 rounded-lg bg-[#5F8A72] text-white flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">check</span></button>
+                                <button onClick={() => handleRejectJob(job.id)} className="w-8 h-8 rounded-lg bg-error-container text-on-error-container flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">close</span></button>
                               </>
                             ) : (
                               <>
-                                <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}>
-                                  <span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span>
-                                </button>
-                                <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline flex items-center justify-center cursor-pointer">
-                                  <span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span>
-                                </button>
+                                <button onClick={() => handleToggleFeature(job.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${job.featured ? 'text-[#C58A3A]' : 'text-outline'}`}><span className="material-symbols-outlined text-[16px]">{job.featured ? 'star' : 'star_border'}</span></button>
+                                <button onClick={() => handleToggleStatus(job.id)} className="w-8 h-8 rounded-lg text-outline flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">{job.status === 'Live' ? 'pause_circle' : 'play_circle'}</span></button>
                               </>
                             )}
-                            <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer">
-                              <span className="material-symbols-outlined text-[16px]">delete</span>
-                            </button>
+                            <button onClick={() => setDeleteConfirmId(job.id)} className="w-8 h-8 rounded-lg text-outline hover:text-error flex items-center justify-center cursor-pointer"><span className="material-symbols-outlined text-[16px]">delete</span></button>
                           </div>
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleViewJob(job)}
-                              disabled={isLoadingJobDetail === job.id}
-                              className="h-8 px-2.5 rounded-lg border border-outline-variant text-outline hover:text-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                            >
-                              {isLoadingJobDetail === job.id ? (
-                                <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                              ) : (
-                                <span className="material-symbols-outlined text-[14px]">visibility</span>
-                              )}
+                            <button onClick={() => handleViewJob(job)} disabled={isLoadingJobDetail === job.id} className="h-8 px-2.5 rounded-lg border border-outline-variant text-outline hover:text-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                              {isLoadingJobDetail === job.id ? (<span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />) : (<span className="material-symbols-outlined text-[14px]">visibility</span>)}
                               <span>View</span>
                             </button>
-                            {onEditJob && (
-                              <button
-                                onClick={() => onEditJob(job.id)}
-                                className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[14px]">edit</span>
-                                <span>Edit</span>
-                              </button>
-                            )}
+                            {onEditJob && (<button onClick={() => onEditJob(job.id)} className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold flex items-center gap-1 cursor-pointer"><span className="material-symbols-outlined text-[14px]">edit</span><span>Edit</span></button>)}
                           </div>
                         </div>
                       </div>
@@ -1315,29 +923,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
       {/* Pagination */}
       {filteredJobs.length > 0 && (
         <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-variant flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-outline">
-          <div>
-            Showing {filteredJobs.length} of {pagination.total} results
-          </div>
+          <div>Showing {filteredJobs.length} of {pagination.total} results</div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-              disabled={pagination.page === 1}
-              className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs"
-            >
-              Previous
-            </button>
-            <span className="px-3 py-1.5 rounded bg-primary text-on-primary font-bold text-xs">
-              {pagination.page}
-            </span>
-            <button
-              onClick={() =>
-                setPagination((prev) => ({ ...prev, page: Math.min(prev.pages, prev.page + 1) }))
-              }
-              disabled={pagination.page >= pagination.pages}
-              className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs"
-            >
-              Next
-            </button>
+            <button onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={pagination.page === 1} className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs">Previous</button>
+            <span className="px-3 py-1.5 rounded bg-primary text-on-primary font-bold text-xs">{pagination.page}</span>
+            <button onClick={() => setPagination((prev) => ({ ...prev, page: Math.min(prev.pages, prev.page + 1) }))} disabled={pagination.page >= pagination.pages} className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs">Next</button>
           </div>
         </div>
       )}
