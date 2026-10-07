@@ -12,6 +12,7 @@ export type NavItem =
    | 'manage-subscriptions' 
   | 'reports-and-complaints'
   | 'content-management'
+  | 'job-approvals' 
   | 'banners'
   | 'notifications'
   | 'roles-and-permissions'

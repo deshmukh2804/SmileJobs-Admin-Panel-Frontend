@@ -12,6 +12,7 @@ import { Toast } from './components/Toast';
 import { LoginView } from './views/LoginView';
 import { DashboardView } from './views/DashboardView';
 import { JobsView } from './views/JobsView';
+import { JobApprovalsView } from './views/JobApprovalsView';  // ✅ NEW
 import { PostJobView } from './views/PostJobView';
 import { CandidatesView } from './views/CandidatesView';
 import { RecruitersView } from './views/RecruitersView';
@@ -39,6 +40,7 @@ import {
 
 interface SidebarCounts {
   pendingVerificationsCount: number;
+  pendingJobsCount: number;  // ✅ NEW
   activeJobsCount: number;
   totalCandidatesCount: number;
   totalRecruitersCount: number;
@@ -48,6 +50,7 @@ interface SidebarCounts {
 
 const INITIAL_SIDEBAR_COUNTS: SidebarCounts = {
   pendingVerificationsCount: 0,
+  pendingJobsCount: 0,  // ✅ NEW
   activeJobsCount: 0,
   totalCandidatesCount: 0,
   totalRecruitersCount: 0,
@@ -244,6 +247,13 @@ export default function App() {
       recruiterEmail: job.recruiterEmail || '',
       whatsapp: job.whatsapp || { enabled: false },
       notes: job.notes || '',
+      // ✅ NEW: Pass through approval fields
+      approvalStatus: job.approvalStatus || '',
+      submittedForReviewAt: job.submittedForReviewAt || '',
+      approvedAt: job.approvedAt || '',
+      approvedBy: job.approvedBy || '',
+      reviewNotes: job.reviewNotes || '',
+      lastEditedAfterApproval: job.lastEditedAfterApproval || false,
     };
   };
 
@@ -265,6 +275,8 @@ export default function App() {
       if (res.success && res.data) {
         setSidebarCounts({
           pendingVerificationsCount: res.data.kpis.pendingVerification.value || 0,
+          // ✅ NEW: Pull pending jobs count from job funnel
+          pendingJobsCount: res.data.jobFunnel?.pending?.count || 0,
           activeJobsCount: res.data.kpis.activeJobs.value || 0,
           totalCandidatesCount: res.data.kpis.totalCandidates.value || 0,
           totalRecruitersCount: res.data.kpis.totalEmployers.value || 0,
@@ -295,7 +307,8 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     refreshSidebarCounts();
-    const interval = setInterval(refreshSidebarCounts, 60000);
+    // ✅ Refresh counts every 30 seconds for near-realtime pending job updates
+    const interval = setInterval(refreshSidebarCounts, 30000);
     return () => clearInterval(interval);
   }, [currentUser, refreshSidebarCounts]);
 
@@ -434,7 +447,7 @@ export default function App() {
     setJobsRefreshKey((k) => k + 1);
     refreshJobs();
     refreshSidebarCounts();
-    showToast(wasEditing ? 'Job updated successfully!' : 'Job posted and is now directly Live!');
+    showToast(wasEditing ? 'Job updated successfully!' : 'Job posted successfully! It is now live.', 'success');
   };
 
   const handleInspectJob = async (job: JobItem) => {
@@ -456,17 +469,30 @@ export default function App() {
   };
 
   const handleApproveJob = async (id: string) => {
-    setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, status: 'Live' as const } : job)));
-    showToast(`Job listing ${id} approved and published live!`);
-    await refreshJobs();
-    await refreshSidebarCounts();
+    try {
+      // Call backend API to approve
+      await jobApi.approveJob?.(id);
+      setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, status: 'Live' as const } : job)));
+      showToast(`✅ Job approved and is now live for candidates!`, 'success');
+      await refreshJobs();
+      await refreshSidebarCounts();
+    } catch (err: any) {
+      console.error('Approve job failed:', err);
+      showToast(err?.message || 'Failed to approve job', 'error');
+    }
   };
 
-  const handleRejectJob = async (id: string) => {
-    setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, status: 'Rejected' as const } : job)));
-    showToast(`Job listing ${id} was rejected.`, 'info');
-    await refreshJobs();
-    await refreshSidebarCounts();
+  const handleRejectJob = async (id: string, reason?: string) => {
+    try {
+      await jobApi.rejectJob?.(id, reason || 'Not approved by admin');
+      setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, status: 'Rejected' as const, rejectionReason: reason || '' } : job)));
+      showToast(`❌ Job rejected. Recruiter has been notified.`, 'info');
+      await refreshJobs();
+      await refreshSidebarCounts();
+    } catch (err: any) {
+      console.error('Reject job failed:', err);
+      showToast(err?.message || 'Failed to reject job', 'error');
+    }
   };
 
   const handleDeleteJob = async (id: string) => {
@@ -556,8 +582,14 @@ export default function App() {
   }, [currentUser]);
 
   const isTabPermitted = useMemo(() => {
+    // ✅ NEW: Always allow job-approvals for admins
+    if (currentTab === 'job-approvals') {
+      const roleName = (currentUser?.activeRole || '').toLowerCase();
+      if (roleName === 'super admin' || roleName === 'superadmin' || roleName === 'admin') return true;
+      return permittedTabs.includes(currentTab) || permittedTabs.includes('jobs');
+    }
     return permittedTabs.includes(currentTab);
-  }, [permittedTabs, currentTab]);
+  }, [permittedTabs, currentTab, currentUser]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -594,6 +626,7 @@ export default function App() {
         }}
         currentUser={currentUser}
         pendingVerificationsCount={sidebarCounts.pendingVerificationsCount}
+        pendingJobsCount={sidebarCounts.pendingJobsCount}  // ✅ NEW
         activeJobsCount={sidebarCounts.activeJobsCount}
         totalCandidatesCount={sidebarCounts.totalCandidatesCount}
         totalRecruitersCount={sidebarCounts.totalRecruitersCount}
@@ -637,13 +670,26 @@ export default function App() {
               />
             )}
 
+            {/* ✅ NEW: Dedicated Job Approvals View */}
+            {currentTab === 'job-approvals' && (
+              <JobApprovalsView
+                onApprove={handleApproveJob}
+                onReject={handleRejectJob}
+                onInspectJob={handleInspectJob}
+                onRefresh={() => {
+                  refreshJobs();
+                  refreshSidebarCounts();
+                }}
+                onToast={showToast}
+              />
+            )}
+
             {currentTab === 'payments-and-billing' && (
               <PaymentsBillingView
                 onToast={(msg, type) => showToast(msg, type || 'success')}
               />
             )}
 
-            {/* ⚡ NEW: MANAGE SUBSCRIPTIONS TAB */}
             {currentTab === 'manage-subscriptions' && <SubscriptionManagementView />}
 
             {currentTab === 'jobs' &&
@@ -691,6 +737,7 @@ export default function App() {
 
             {![
               'dashboard',
+              'job-approvals',  // ✅ NEW
               'jobs',
               'candidates',
               'recruiters',

@@ -7,6 +7,7 @@ interface SidebarProps {
   onSelectTab: (tab: NavItem) => void;
   currentUser: AdminUser;
   pendingVerificationsCount?: number;
+  pendingJobsCount?: number;  // ✅ NEW
   activeJobsCount?: number;
   totalCandidatesCount?: number;
   totalRecruitersCount?: number;
@@ -22,6 +23,7 @@ interface NavMenuItem {
   icon: string;
   count?: string | number;
   countColor?: string;
+  highlight?: boolean;  // ✅ NEW: Pulse animation for urgent items
 }
 
 const formatCount = (n: number): string => {
@@ -35,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   currentUser,
   pendingVerificationsCount = 0,
+  pendingJobsCount = 0,  // ✅ NEW
   activeJobsCount = 0,
   totalCandidatesCount = 0,
   totalRecruitersCount = 0,
@@ -73,6 +76,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   ].filter((item) => isAllowed(item.id));
 
+  // ✅ NEW: Approvals section — dedicated job approval queue
+  const approvalItems: NavMenuItem[] = [
+    {
+      id: 'job-approvals' as NavItem,
+      label: 'Job Approvals',
+      icon: 'fact_check',
+      count: pendingJobsCount > 0 ? pendingJobsCount : undefined,
+      countColor: pendingJobsCount > 0 ? 'bg-amber-500 text-white animate-pulse font-bold' : undefined,
+      highlight: pendingJobsCount > 0,
+    },
+    {
+      id: 'verification',
+      label: 'Verification',
+      icon: 'verified',
+      count: pendingVerificationsCount > 0 ? pendingVerificationsCount : undefined,
+      countColor: pendingVerificationsCount > 0 ? 'bg-amber-500 text-white animate-pulse font-bold' : 'bg-surface-container-highest text-on-surface font-semibold',
+      highlight: pendingVerificationsCount > 0,
+    },
+  ].filter((item) => isAllowed(item.id) || item.id === 'job-approvals'); // Always show job-approvals for admins
+
   const managementItems: NavMenuItem[] = [
     {
       id: 'candidates',
@@ -88,7 +111,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'jobs',
-      label: 'Jobs',
+      label: 'All Jobs',
       icon: 'work',
       count: formatCount(activeJobsCount),
     },
@@ -101,15 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ].filter((item) => isAllowed(item.id));
 
   const operationsItems: NavMenuItem[] = [
-    {
-      id: 'verification',
-      label: 'Verification',
-      icon: 'verified',
-      count: pendingVerificationsCount,
-      countColor: 'bg-surface-container-highest text-on-surface font-semibold',
-    },
     { id: 'payments-and-billing', label: 'Payments & Billing', icon: 'credit_card' },
-    // ⚡ NEW: MANAGE SUBSCRIPTIONS TAB
     {
       id: 'manage-subscriptions',
       label: 'Manage Subscriptions',
@@ -127,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ].filter((item) => isAllowed(item.id));
 
   const totalItems =
-    overviewItems.length + managementItems.length + operationsItems.length + systemItems.length;
+    overviewItems.length + approvalItems.length + managementItems.length + operationsItems.length + systemItems.length;
 
   const renderNavGroup = (title: string, items: NavMenuItem[]) => {
     if (items.length === 0) return null;
@@ -145,6 +160,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className={`w-full flex items-center justify-between px-space-sm py-1.5 rounded-lg transition-all cursor-pointer text-xs font-semibold ${
                 isActive
                   ? 'bg-secondary-fixed text-primary font-bold shadow-xs'
+                  : item.highlight
+                  ? 'text-amber-900 bg-amber-50 border border-amber-200 hover:bg-amber-100'
                   : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
               }`}
             >
@@ -196,6 +213,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Sections */}
         <nav className="p-space-sm space-y-space-md">
           {renderNavGroup('Overview', overviewItems)}
+          {/* ✅ NEW: Approvals section */}
+          {renderNavGroup('Approvals', approvalItems)}
           {renderNavGroup('Management', managementItems)}
           {renderNavGroup('Operations', operationsItems)}
           {renderNavGroup('System', systemItems)}
