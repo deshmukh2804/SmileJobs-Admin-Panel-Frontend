@@ -132,11 +132,10 @@ export const jobApi = {
 
   async createJob(payload: any, logoFile?: File | null, imageFiles?: File[]) {
     const hasFiles = !!(logoFile || (imageFiles && imageFiles.length > 0));
-    const adjustedPayload = { ...payload, status: 'Live' };
 
     let res;
     if (hasFiles) {
-      const form = buildFormData(adjustedPayload, logoFile || null, imageFiles || []);
+      const form = buildFormData(payload, logoFile || null, imageFiles || []);
       res = await safeFetch(`${API_BASE_URL}/jobs`, {
         method: 'POST',
         headers: { ...getAuthHeader() },
@@ -146,7 +145,7 @@ export const jobApi = {
       res = await safeFetch(`${API_BASE_URL}/jobs`, {
         method: 'POST',
         headers: getJsonHeaders(),
-        body: JSON.stringify(adjustedPayload),
+        body: JSON.stringify(payload),
       });
     }
 
@@ -179,7 +178,7 @@ export const jobApi = {
     return data;
   },
 
-   async deleteJob(id: string) {
+  async deleteJob(id: string) {
     const res = await safeFetch(`${API_BASE_URL}/jobs/${id}`, {
       method: 'DELETE',
       headers: getJsonHeaders(),
@@ -189,21 +188,37 @@ export const jobApi = {
     return data;
   },
 
-  async approveJob(id: string) {
+  async approveJob(id: string, notes?: string) {
     const res = await safeFetch(`${API_BASE_URL}/jobs/${id}/approve`, {
-      method: 'PATCH',
+      method: 'POST',
       headers: getJsonHeaders(),
+      body: JSON.stringify({ notes: notes || '' }),
     });
-    return res.json();
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to approve job');
+    return data;
   },
 
   async rejectJob(id: string, reason?: string) {
     const res = await safeFetch(`${API_BASE_URL}/jobs/${id}/reject`, {
-      method: 'PATCH',
+      method: 'POST',
       headers: getJsonHeaders(),
       body: JSON.stringify({ reason }),
     });
-    return res.json();
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to reject job');
+    return data;
+  },
+
+  async suspendJob(id: string, reason?: string) {
+    const res = await safeFetch(`${API_BASE_URL}/jobs/${id}/suspend`, {
+      method: 'POST',
+      headers: getJsonHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to suspend job');
+    return data;
   },
 
   async toggleFeature(id: string) {
@@ -1073,6 +1088,7 @@ export const dashboardApi = {
     return data;
   },
 };
+
 /* ═══════════════════════════════════════════════════════════
    VERIFICATION API (Real backend from recruiter_db)
    ═══════════════════════════════════════════════════════════ */
