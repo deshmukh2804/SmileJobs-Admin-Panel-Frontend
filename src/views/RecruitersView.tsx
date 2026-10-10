@@ -1,6 +1,5 @@
-// FILE: frontend/src/views/RecruitersView.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { userManagementApi } from '../services/api';
+import { userManagementApi, applicationHierarchyApi } from '../services/api';
 
 interface RecruiterItem {
   _id: string;
@@ -23,6 +22,34 @@ interface RecruiterItem {
   jobCount?: number;
 }
 
+interface JobHierarchyItem {
+  _id: string;
+  title: string;
+  status: string;
+  jobType: string;
+  workMode: string;
+  applicationCount: number;
+  pendingCount: number;
+  hiredCount: number;
+}
+
+interface ApplicationItem {
+  _id: string;
+  candidateName: string;
+  candidateEmail: string;
+  candidatePhone: string;
+  candidateCity: string;
+  candidateAvatarUrl?: string;
+  status: string;
+  appliedAt: string;
+  candidateSkills?: string[];
+  workflow: {
+    currentStatus: string;
+    allowedNextStatuses: string[];
+    isTerminal: boolean;
+  };
+}
+
 const shortId = (id?: string) => (id ? id.slice(-8).toUpperCase() : '—');
 
 export const RecruitersView: React.FC = () => {
@@ -35,11 +62,21 @@ export const RecruitersView: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, verified: 0 });
+  
   const [selectedUser, setSelectedUser] = useState<RecruiterItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  
+  // Drilldown states inside modal
+  const [recruiterJobs, setRecruiterJobs] = useState<JobHierarchyItem[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<JobHierarchyItem | null>(null);
+  const [jobApplications, setJobApplications] = useState<ApplicationItem[]>([]);
+  const [appsLoading, setAppsLoading] = useState(false);
+  const [statusUpdateLoading, setStatusUpdateLoading] = useState<string | null>(null);
+
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
     message: string;
@@ -92,14 +129,71 @@ export const RecruitersView: React.FC = () => {
   const handleViewDetail = async (id: string) => {
     setDetailLoading(true);
     setShowDetailModal(true);
+    setSelectedJob(null);
+    setJobApplications([]);
     try {
       const res = await userManagementApi.getRecruiterById(id);
-      if (res.success) setSelectedUser(res.data);
+      if (res.success) {
+        setSelectedUser(res.data);
+        // Automatically fetch jobs posted by this recruiter
+        fetchRecruiterJobs(id);
+      }
     } catch (err: any) {
       showToast(err.message || 'Failed to load details', 'error');
       setShowDetailModal(false);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const fetchRecruiterJobs = async (recruiterId: string) => {
+    setJobsLoading(true);
+    try {
+      const res = await applicationHierarchyApi.getRecruiterJobs(recruiterId);
+      if (res.success) {
+        setRecruiterJobs(res.data || []);
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setJobsLoading(false);
+    }
+  };
+
+  const handleSelectJob = async (job: JobHierarchyItem) => {
+    setSelectedJob(job);
+    setAppsLoading(true);
+    try {
+      const res = await applicationHierarchyApi.getJobApplications(job._id);
+      if (res.success) {
+        setJobApplications(res.data || []);
+      }
+    } catch (err: any) {
+      showToast("Failed to load applications for this job", "error");
+    } finally {
+      setAppsLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (appId: string, newStatus: string) => {
+    setStatusUpdateLoading(appId);
+    try {
+      const res = await applicationHierarchyApi.updateApplicationStatus(appId, newStatus, "Status updated via Recruiters Directory");
+      if (res.success) {
+        showToast("Candidate application status updated!");
+        // Refresh local applications list
+        if (selectedJob) {
+          handleSelectJob(selectedJob);
+        }
+        // Refresh jobs stats
+        if (selectedUser) {
+          fetchRecruiterJobs(selectedUser._id);
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to update status", "error");
+    } finally {
+      setStatusUpdateLoading(null);
     }
   };
 
@@ -196,11 +290,11 @@ export const RecruitersView: React.FC = () => {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-on-surface flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[22px] text-emerald-600">business_center</span>
+            <span className="material-symbols-outlined text-[22px] text-emerald-600 font-bold">business_center</span>
             Recruiters Directory
             <span className="text-xs font-normal text-outline">({total.toLocaleString()})</span>
           </h1>
-          <p className="text-[11px] text-outline mt-0.5">Manage employer accounts • Fetched from recruiter_db.recruiters</p>
+          <p className="text-[11px] text-outline mt-0.5">Manage employer accounts • Review their live job listings & candidates</p>
         </div>
         <button
           onClick={fetchData}
@@ -361,10 +455,10 @@ export const RecruitersView: React.FC = () => {
         </div>
       )}
 
-      {/* ═══════ DETAIL MODAL ═══════ */}
+      {/* ═══════ DETAIL MODAL WITH MULTI-LEVEL DRILLDOWN ═══════ */}
       {showDetailModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDetailModal(false)}>
-          <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             {detailLoading || !selectedUser ? (
               <div className="p-20 text-center">
                 <div className="w-10 h-10 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin mx-auto" />
@@ -373,112 +467,178 @@ export const RecruitersView: React.FC = () => {
             ) : (
               <>
                 {/* Header */}
-                <div className="relative bg-gradient-to-br from-emerald-100 via-emerald-50/50 to-transparent p-4 border-b border-surface-variant">
+                <div className="relative bg-gradient-to-br from-emerald-100 via-emerald-50/50 to-transparent p-4 border-b border-surface-variant flex-shrink-0">
                   <button onClick={() => setShowDetailModal(false)} className="absolute top-3 right-3 w-7 h-7 rounded-md hover:bg-white/60 flex items-center justify-center cursor-pointer">
                     <span className="material-symbols-outlined text-[16px]">close</span>
                   </button>
                   <div className="flex items-center gap-3 pr-8">
                     {selectedUser.profileImage?.url ? (
-                      <img src={selectedUser.profileImage.url} alt="" className="w-16 h-16 rounded-full object-cover border-3 border-white shadow-md shrink-0" />
+                      <img src={selectedUser.profileImage.url} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md shrink-0" />
                     ) : (
-                      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-2xl shrink-0">
+                      <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xl shrink-0">
                         {selectedUser.name?.charAt(0)?.toUpperCase()}
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h2 className="text-base font-bold text-on-surface truncate">{selectedUser.name}</h2>
-                        {selectedUser.verified && <span className="material-symbols-outlined text-[16px] text-emerald-600">verified</span>}
-                        <span className={`text-[9px] px-1.5 py-0 rounded font-bold uppercase ${
+                        <h2 className="text-sm font-bold text-on-surface truncate">{selectedUser.name}</h2>
+                        {selectedUser.verified && <span className="material-symbols-outlined text-[14px] text-emerald-600">verified</span>}
+                        <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${
                           selectedUser.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}>
                           {selectedUser.isActive !== false ? '● Active' : '● Blocked'}
                         </span>
                       </div>
-                      <p className="text-[11px] font-mono text-outline truncate">{selectedUser.email}</p>
+                      <p className="text-[10px] font-mono text-outline truncate">{selectedUser.email}</p>
                       {selectedUser.companyName && (
                         <p className="text-xs font-bold text-emerald-700 mt-0.5">🏢 {selectedUser.companyName}</p>
                       )}
-                      <div className="flex items-center gap-2 mt-1 text-[10px] text-outline">
-                        <span>REC ID: <code className="font-mono bg-white/60 px-1 rounded">{shortId(selectedUser._id)}</code></span>
-                        <span>•</span>
-                        <span className="font-bold text-blue-700">{selectedUser.jobCount || 0} active job posts</span>
-                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {/* Contact */}
-                  <SectionCard title="Contact Information" icon="contact_page">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <InfoRow label="Email Address" value={selectedUser.email} />
-                      <InfoRow label="Mobile Phone" value={selectedUser.mobileNumber} />
-                      <InfoRow label="WhatsApp" value={selectedUser.whatsappNumber} />
-                      <InfoRow label="WhatsApp Enabled" value={selectedUser.whatsappContactEnabled ? '✓ Yes' : 'No'} />
-                    </div>
-                    {(selectedUser.email || selectedUser.mobileNumber || selectedUser.whatsappNumber) && (
-                      <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-surface-variant">
-                        {selectedUser.email && (
-                          <a href={`mailto:${selectedUser.email}`} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-[10px] font-medium hover:bg-blue-100 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[12px]">mail</span> Email
-                          </a>
-                        )}
-                        {selectedUser.mobileNumber && (
-                          <a href={`tel:${selectedUser.mobileNumber}`} className="px-2.5 py-1 rounded bg-purple-50 text-purple-700 text-[10px] font-medium hover:bg-purple-100 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[12px]">call</span> Call
-                          </a>
-                        )}
-                        {selectedUser.whatsappNumber && (
-                          <a href={`https://wa.me/${selectedUser.whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded bg-green-50 text-green-700 text-[10px] font-medium hover:bg-green-100 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[12px]">chat</span> WhatsApp
-                          </a>
-                        )}
+                {/* Body Split View */}
+                <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
+                  {/* Left Column: Profile details & Jobs list */}
+                  <div className="w-full md:w-1/2 p-4 border-r border-surface-variant overflow-y-auto space-y-3">
+                    <SectionCard title="Contact Information" icon="contact_page">
+                      <div className="grid grid-cols-2 gap-2">
+                        <InfoRow label="Mobile Phone" value={selectedUser.mobileNumber} />
+                        <InfoRow label="WhatsApp" value={selectedUser.whatsappNumber} />
                       </div>
-                    )}
-                  </SectionCard>
+                    </SectionCard>
 
-                  {/* Company */}
-                  <SectionCard title="Company / Organization" icon="business">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <InfoRow label="Company Name" value={selectedUser.companyName} />
-                      <InfoRow label="Designation" value={selectedUser.designation} />
-                      <InfoRow label="Company Size" value={selectedUser.companySize} />
-                      <InfoRow label="Industry" value={selectedUser.industry} />
-                      {selectedUser.companyWebsite && (
-                        <div className="col-span-2">
-                          <p className="text-[9px] text-outline uppercase tracking-wider font-bold">Website</p>
-                          <a href={selectedUser.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline font-semibold truncate block mt-0.5">
-                            {selectedUser.companyWebsite} ↗
-                          </a>
+                    {/* Job Listings Header */}
+                    <div className="bg-surface-container-low rounded-lg p-3 border border-surface-variant">
+                      <h3 className="text-[10px] font-bold text-on-surface uppercase tracking-wider flex items-center gap-1 mb-2">
+                        <span className="material-symbols-outlined text-[13px] text-emerald-600">work</span>
+                        Job Listings ({recruiterJobs.length})
+                      </h3>
+
+                      {jobsLoading ? (
+                        <p className="text-[10px] text-outline text-center py-4">Loading listings...</p>
+                      ) : recruiterJobs.length === 0 ? (
+                        <p className="text-[10px] text-outline text-center py-4">No jobs posted by this recruiter.</p>
+                      ) : (
+                        <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+                          {recruiterJobs.map((job) => (
+                            <button
+                              key={job._id}
+                              onClick={() => handleSelectJob(job)}
+                              className={`w-full text-left p-2 rounded border transition-all flex items-center justify-between text-xs cursor-pointer ${
+                                selectedJob?._id === job._id
+                                  ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold'
+                                  : 'bg-white border-surface-variant hover:border-emerald-300'
+                              }`}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold">{job.title}</p>
+                                <div className="flex items-center gap-1.5 text-[9px] text-outline mt-0.5">
+                                  <span>{job.jobType}</span>
+                                  <span>•</span>
+                                  <span>{job.workMode}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 ml-2">
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">
+                                  {job.applicationCount || 0} apps
+                                </span>
+                                <span className="material-symbols-outlined text-[14px] text-outline">chevron_right</span>
+                              </div>
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
-                  </SectionCard>
+                  </div>
 
-                  {/* About */}
-                  {selectedUser.about && (
-                    <SectionCard title="About / Company Description" icon="article">
-                      <p className="text-xs text-on-surface leading-relaxed whitespace-pre-wrap">{selectedUser.about}</p>
-                    </SectionCard>
-                  )}
+                  {/* Right Column: Applications View */}
+                  <div className="w-full md:w-1/2 p-4 bg-surface-container-lowest overflow-y-auto flex flex-col min-h-0">
+                    {!selectedJob ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-outline">
+                        <span className="material-symbols-outlined text-[36px] mb-2 text-outline/60">person_search</span>
+                        <p className="text-xs font-medium">Select a job listing on the left to review applicants and transition candidate statuses.</p>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col min-h-0 space-y-3">
+                        <div className="border-b border-surface-variant pb-2 flex-shrink-0">
+                          <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Reviewing Applications</p>
+                          <h4 className="text-xs font-bold text-on-surface truncate">{selectedJob.title}</h4>
+                        </div>
 
-                  {/* Metadata */}
-                  <SectionCard title="Account Metadata" icon="info">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <InfoRow label="Recruiter ID" value={selectedUser._id} />
-                      <InfoRow label="Registration Date" value={new Date(selectedUser.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} />
-                      {selectedUser.updatedAt && (
-                        <InfoRow label="Last Updated" value={new Date(selectedUser.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} />
-                      )}
-                      <InfoRow label="Active Job Posts" value={String(selectedUser.jobCount || 0)} />
-                    </div>
-                  </SectionCard>
+                        {appsLoading ? (
+                          <div className="flex-1 flex items-center justify-center">
+                            <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+                          </div>
+                        ) : jobApplications.length === 0 ? (
+                          <p className="text-xs text-outline text-center py-10">No applications received for this job yet.</p>
+                        ) : (
+                          <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+                            {jobApplications.map((app) => (
+                              <div key={app._id} className="border border-surface-variant rounded-lg p-3 bg-white space-y-2">
+                                <div className="flex items-start gap-2">
+                                  {app.candidateAvatarUrl ? (
+                                    <img src={app.candidateAvatarUrl} alt="" className="w-9 h-9 rounded-full object-cover border border-surface-variant shrink-0" />
+                                  ) : (
+                                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-on-surface font-bold text-xs shrink-0">
+                                      {app.candidateName?.charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <h5 className="text-xs font-bold text-on-surface truncate">{app.candidateName}</h5>
+                                    <p className="text-[10px] text-outline truncate">{app.candidateEmail}</p>
+                                    <p className="text-[10px] text-outline truncate">{app.candidatePhone}</p>
+                                    <p className="text-[9px] text-outline italic mt-0.5">📍 {app.candidateCity || 'Not Provided'}</p>
+                                  </div>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                    app.status === 'Hired' ? 'bg-green-100 text-green-700' :
+                                    app.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                    'bg-amber-100 text-amber-700'
+                                  }`}>
+                                    {app.status}
+                                  </span>
+                                </div>
+
+                                {app.candidateSkills && app.candidateSkills.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {app.candidateSkills.slice(0, 4).map((skill, i) => (
+                                      <span key={i} className="text-[8px] px-1 py-0.5 rounded bg-surface-container-high text-outline font-semibold">
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Workflow status changer */}
+                                <div className="bg-surface-container-lowest p-2 rounded border border-surface-variant mt-2 flex items-center justify-between gap-2">
+                                  <span className="text-[9px] font-bold text-outline uppercase">Transition Status:</span>
+                                  {app.workflow.isTerminal ? (
+                                    <span className="text-[9px] text-outline font-semibold">Terminal Status REACHED</span>
+                                  ) : (
+                                    <select
+                                      disabled={statusUpdateLoading === app._id}
+                                      value={app.status}
+                                      onChange={(e) => handleStatusChange(app._id, e.target.value)}
+                                      className="text-[10px] p-1 border rounded bg-white font-medium focus:ring-1 focus:ring-emerald-500 shrink-0 outline-none"
+                                    >
+                                      <option value={app.status} disabled>{app.status} (Current)</option>
+                                      {app.workflow.allowedNextStatuses.map((next) => (
+                                        <option key={next} value={next}>{next}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-3 border-t border-surface-variant bg-surface-container-low flex flex-wrap gap-1.5 justify-end">
+                <div className="p-3 border-t border-surface-variant bg-surface-container-low flex flex-wrap gap-1.5 justify-end flex-shrink-0">
                   <button
                     onClick={() => handleToggleVerification(selectedUser)}
                     disabled={!!actionLoading}

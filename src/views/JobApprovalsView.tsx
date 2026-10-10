@@ -25,13 +25,48 @@ export const JobApprovalsView: React.FC<JobApprovalsViewProps> = ({
   const [rejectModal, setRejectModal] = useState<{ id: string; title: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // ──────────────────────────────────────────────────────────────
+  // FETCH PENDING JOBS — robustly filter approvalStatus = pending_review
+  // ──────────────────────────────────────────────────────────────
   const fetchPendingJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await jobApi.getJobs({ status: 'Pending', limit: 100 });
-      if (res.success && res.data) {
-        setPendingJobs(res.data);
+      // Primary attempt: fetch strictly jobs where approvalStatus === 'pending_review'
+      const res = await jobApi.getJobs({
+        approvalStatus: 'pending_review',
+        status: 'All',
+        limit: 200,
+        page: 1,
+      });
+
+      let items: any[] = [];
+      if (res && res.success) {
+        items = res.data || res.jobs || [];
       }
+
+      // Fallback 1: if backend ignored the filter, fetch ALL and filter client-side.
+      if (!items || items.length === 0) {
+        const resAll = await jobApi.getJobs({ limit: 500, page: 1 });
+        if (resAll && resAll.success) {
+          const everything = resAll.data || resAll.jobs || [];
+          items = everything.filter(
+            (j: any) =>
+              j.approvalStatus === 'pending_review' ||
+              j.approvalStatus === 'pending' ||
+              j.status === 'Pending Approval' ||
+              j.status === 'Pending'
+          );
+        }
+      }
+
+      // Final sort — oldest submissions on top (admin reviews FIFO)
+      items.sort((a, b) => {
+        const dateA = new Date(a.submittedForReviewAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.submittedForReviewAt || b.createdAt || 0).getTime();
+        return dateA - dateB;
+      });
+
+      setPendingJobs(items);
     } catch (err: any) {
       console.error('Failed to fetch pending jobs:', err);
       onToast('Failed to load pending jobs', 'error');
@@ -55,7 +90,7 @@ export const JobApprovalsView: React.FC<JobApprovalsViewProps> = ({
         j.companyName?.toLowerCase().includes(q) ||
         j.contactPerson?.name?.toLowerCase().includes(q) ||
         j.recruiterEmail?.toLowerCase().includes(q) ||
-        j._id?.toLowerCase().includes(q)
+        String(j._id || j.id || '').toLowerCase().includes(q)
     );
   }, [pendingJobs, searchQuery]);
 
@@ -250,6 +285,8 @@ export const JobApprovalsView: React.FC<JobApprovalsViewProps> = ({
                     <div className="w-16 h-16 rounded-xl bg-gray-100 text-gray-700 flex items-center justify-center font-bold text-base shrink-0 overflow-hidden border border-gray-200">
                       {job.companyLogo?.url ? (
                         <img src={job.companyLogo.url} alt={job.companyName} className="w-full h-full object-cover" />
+                      ) : typeof job.companyLogo === 'string' && job.companyLogo ? (
+                        <img src={job.companyLogo} alt={job.companyName} className="w-full h-full object-cover" />
                       ) : (
                         job.companyInitials || job.companyName?.slice(0, 2).toUpperCase() || 'CO'
                       )}
@@ -328,7 +365,9 @@ export const JobApprovalsView: React.FC<JobApprovalsViewProps> = ({
                         </span>
                         <span className="flex items-center gap-1 bg-gray-100 px-2.5 py-1 rounded-lg">
                           <span className="material-symbols-outlined text-[14px]">payments</span>
-                          {job.salary?.min ? `₹${job.salary.min.toLocaleString()} - ₹${job.salary.max?.toLocaleString() || '...'}` : 'Not Disclosed'}
+                          {job.salary?.min
+                            ? `₹${Number(job.salary.min).toLocaleString()} - ₹${Number(job.salary.max || 0).toLocaleString()}`
+                            : 'Not Disclosed'}
                         </span>
                         <span className="flex items-center gap-1 bg-amber-100 text-amber-900 font-bold px-2.5 py-1 rounded-lg">
                           <span className="material-symbols-outlined text-[14px]">schedule</span>

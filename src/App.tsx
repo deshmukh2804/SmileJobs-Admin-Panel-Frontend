@@ -12,12 +12,13 @@ import { Toast } from './components/Toast';
 import { LoginView } from './views/LoginView';
 import { DashboardView } from './views/DashboardView';
 import { JobsView } from './views/JobsView';
-import { JobApprovalsView } from './views/JobApprovalsView';  // ✅ NEW
+import { JobApprovalsView } from './views/JobApprovalsView';
 import { PostJobView } from './views/PostJobView';
 import { CandidatesView } from './views/CandidatesView';
 import { RecruitersView } from './views/RecruitersView';
 import { VerificationView } from './views/VerificationView';
 import { ApplicationsView } from './views/ApplicationsView';
+import { ApplicationHierarchyView } from './views/ApplicationHierarchyView';
 import { ActivityLogView } from './views/ActivityLogView';
 import { RolesPermissionsView } from './views/RolesPermissionsView';
 import { BottomNavConfigView } from './views/BottomNavConfigView';
@@ -25,6 +26,7 @@ import { NotificationsView } from './views/NotificationsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { PaymentsBillingView } from './views/PaymentsBillingView';
 import { SubscriptionManagementView } from './views/SubscriptionManagementView';
+import { AdminJobsView } from './views/AdminJobsView'; // New File Import
 
 import { INITIAL_JOBS, INITIAL_USERS, INITIAL_VERIFICATIONS } from './data/mockData';
 import { jobApi, adminApi, dashboardApi, API_BASE_URL } from './services/api';
@@ -40,7 +42,7 @@ import {
 
 interface SidebarCounts {
   pendingVerificationsCount: number;
-  pendingJobsCount: number;  // ✅ NEW
+  pendingJobsCount: number;
   activeJobsCount: number;
   totalCandidatesCount: number;
   totalRecruitersCount: number;
@@ -50,7 +52,7 @@ interface SidebarCounts {
 
 const INITIAL_SIDEBAR_COUNTS: SidebarCounts = {
   pendingVerificationsCount: 0,
-  pendingJobsCount: 0,  // ✅ NEW
+  pendingJobsCount: 0,
   activeJobsCount: 0,
   totalCandidatesCount: 0,
   totalRecruitersCount: 0,
@@ -60,7 +62,7 @@ const INITIAL_SIDEBAR_COUNTS: SidebarCounts = {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
-  const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
+  const [currentTab, setCurrentTab] = useState<any>('dashboard'); // flexible tab typing to support custom tabs
 
   const [jobs, setJobs] = useState<JobItem[]>(INITIAL_JOBS);
   const [users, setUsers] = useState<UserItem[]>(INITIAL_USERS);
@@ -247,7 +249,6 @@ export default function App() {
       recruiterEmail: job.recruiterEmail || '',
       whatsapp: job.whatsapp || { enabled: false },
       notes: job.notes || '',
-      // ✅ NEW: Pass through approval fields
       approvalStatus: job.approvalStatus || '',
       submittedForReviewAt: job.submittedForReviewAt || '',
       approvedAt: job.approvedAt || '',
@@ -275,7 +276,6 @@ export default function App() {
       if (res.success && res.data) {
         setSidebarCounts({
           pendingVerificationsCount: res.data.kpis.pendingVerification.value || 0,
-          // ✅ NEW: Pull pending jobs count from job funnel
           pendingJobsCount: res.data.jobFunnel?.pending?.count || 0,
           activeJobsCount: res.data.kpis.activeJobs.value || 0,
           totalCandidatesCount: res.data.kpis.totalCandidates.value || 0,
@@ -307,7 +307,6 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     refreshSidebarCounts();
-    // ✅ Refresh counts every 30 seconds for near-realtime pending job updates
     const interval = setInterval(refreshSidebarCounts, 30000);
     return () => clearInterval(interval);
   }, [currentUser, refreshSidebarCounts]);
@@ -470,7 +469,6 @@ export default function App() {
 
   const handleApproveJob = async (id: string) => {
     try {
-      // Call backend API to approve
       await jobApi.approveJob?.(id);
       setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, status: 'Live' as const } : job)));
       showToast(`✅ Job approved and is now live for candidates!`, 'success');
@@ -517,26 +515,6 @@ export default function App() {
     await refreshSidebarCounts();
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleToggleUserStatus = (id: string) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: u.status === 'Active' ? 'Blocked' : 'Active' } : u))
-    );
-    showToast(`User account status updated for ${id}`);
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleToggleUserVerification = (id: string) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? { ...u, verificationStatus: u.verificationStatus === 'Verified' ? 'Unverified' : 'Verified' }
-          : u
-      )
-    );
-    showToast(`User verification credentials updated!`);
-  };
-
   const handleSaveUser = (newUser: UserItem) => {
     setUsers((prev) => [newUser, ...prev]);
     setCurrentTab('candidates');
@@ -571,18 +549,20 @@ export default function App() {
       roleName.toLowerCase() === 'super admin' || roleName.toLowerCase() === 'superadmin';
 
     if (isSuperAdmin) {
-      return ROLE_PERMISSIONS['Super Admin'] || [];
+      // Automatically permit custom admin-jobs tab as well
+      const basePermitted = ROLE_PERMISSIONS['Super Admin'] || [];
+      return [...basePermitted, 'admin-jobs' as any];
     }
 
     if (Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
-      return currentUser.permissions;
+      return [...currentUser.permissions, 'admin-jobs' as any];
     }
 
-    return [];
+    return ['admin-jobs' as any];
   }, [currentUser]);
 
   const isTabPermitted = useMemo(() => {
-    // ✅ NEW: Always allow job-approvals for admins
+    if (currentTab === 'admin-jobs') return true; // Custom admin jobs section bypass
     if (currentTab === 'job-approvals') {
       const roleName = (currentUser?.activeRole || '').toLowerCase();
       if (roleName === 'super admin' || roleName === 'superadmin' || roleName === 'admin') return true;
@@ -626,7 +606,7 @@ export default function App() {
         }}
         currentUser={currentUser}
         pendingVerificationsCount={sidebarCounts.pendingVerificationsCount}
-        pendingJobsCount={sidebarCounts.pendingJobsCount}  // ✅ NEW
+        pendingJobsCount={sidebarCounts.pendingJobsCount}
         activeJobsCount={sidebarCounts.activeJobsCount}
         totalCandidatesCount={sidebarCounts.totalCandidatesCount}
         totalRecruitersCount={sidebarCounts.totalRecruitersCount}
@@ -670,7 +650,6 @@ export default function App() {
               />
             )}
 
-            {/* ✅ NEW: Dedicated Job Approvals View */}
             {currentTab === 'job-approvals' && (
               <JobApprovalsView
                 onApprove={handleApproveJob}
@@ -730,25 +709,31 @@ export default function App() {
             )}
 
             {currentTab === 'applications' && <ApplicationsView />}
+            {currentTab === 'application-hierarchy' && <ApplicationHierarchyView />}
             {currentTab === 'admin-activity-log' && <ActivityLogView />}
             {currentTab === 'roles-and-permissions' && <RolesPermissionsView />}
             {currentTab === 'bottom-nav-config' && <BottomNavConfigView />}
             {currentTab === 'notifications' && <NotificationsView />}
+            
+            {/* Custom Admin Posted Jobs Tab */}
+            {currentTab === 'admin-jobs' && <AdminJobsView />}
 
             {![
               'dashboard',
-              'job-approvals',  // ✅ NEW
+              'job-approvals',
               'jobs',
               'candidates',
               'recruiters',
               'verification',
               'applications',
+              'application-hierarchy',
               'admin-activity-log',
               'roles-and-permissions',
               'bottom-nav-config',
               'notifications',
               'payments-and-billing',
               'manage-subscriptions',
+              'admin-jobs'
             ].includes(currentTab) && (
               <PlaceholderView tab={currentTab} onSelectTab={(tab) => setCurrentTab(tab)} />
             )}

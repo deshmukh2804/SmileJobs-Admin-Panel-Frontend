@@ -14,65 +14,67 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
   onSaveJob,
 }) => {
   // Section 1: Basic Job Information
-  const [title, setTitle] = useState('');
-  const [department, setDepartment] = useState('Engineering');
-  const [role, setRole] = useState('');
-  const [jobType, setJobType] = useState<'Full-Time' | 'Part-Time' | 'Contract' | 'Internship'>('Full-Time');
-  const [workMode, setWorkMode] = useState<'On-site' | 'Hybrid' | 'Remote'>('Hybrid');
+  const [title, setTitle] = useState('test 6');
+  const [department, setDepartment] = useState('Customer Service');
+  const [role, setRole] = useState('test 6');
+  const [jobType, setJobType] = useState<'Full-Time' | 'Part-Time' | 'Contract' | 'Internship'>('Part-Time');
+  const [workMode, setWorkMode] = useState<'On-site' | 'Hybrid' | 'Remote'>('On-site');
 
   // Section 2: Company Information
-  const [companyName, setCompanyName] = useState('');
-  const [companyWebsite, setCompanyWebsite] = useState('');
-  const [industry, setIndustry] = useState('Technology');
-  const [establishedYear, setEstablishedYear] = useState('');
-  const [organizationSize, setOrganizationSize] = useState('50-200');
+  const [companyName, setCompanyName] = useState('Uwe services');
+  const [companyWebsite, setCompanyWebsite] = useState('https://en.wikipedia.org/wiki/URL');
+  const [industry, setIndustry] = useState('I T');
+  const [establishedYear, setEstablishedYear] = useState('2014');
+  const [organizationSize, setOrganizationSize] = useState('11-50 employees');
 
   // Section 3: Job Description
-  const [jobDescription, setJobDescription] = useState('');
+  const [jobDescription, setJobDescription] = useState('dfghjksdfghjkl;asdfg');
 
   // Section 4: Skills & Requirements
-  const [skillsText, setSkillsText] = useState('');
-  const [requirementsText, setRequirementsText] = useState('');
+  const [skillsText, setSkillsText] = useState('ghjk, ghj]');
+  const [requirementsText, setRequirementsText] = useState('ghjk');
   const [responsibilitiesText, setResponsibilitiesText] = useState('');
-  const [qualification, setQualification] = useState('');
+  const [benefitsText, setBenefitsText] = useState('');
+  const [qualification, setQualification] = useState("MBA / PGDM in Human Resources or Bachelor's degree in any relevant field");
   const [languagesText, setLanguagesText] = useState('');
+  const [noticePeriod, setNoticePeriod] = useState('30 Days / 1 Month');
 
   // Section 5: Salary & Experience
-  const [salaryMin, setSalaryMin] = useState('');
-  const [salaryMax, setSalaryMax] = useState('');
+  const [salaryMin, setSalaryMin] = useState('9');
+  const [salaryMax, setSalaryMax] = useState('12');
   const [salaryCurrency, setSalaryCurrency] = useState('INR');
   const [salaryPeriod, setSalaryPeriod] = useState<'hour' | 'day' | 'week' | 'month' | 'year'>('month');
-  const [experienceMin, setExperienceMin] = useState('0');
-  const [experienceMax, setExperienceMax] = useState('');
+  const [experienceMin, setExperienceMin] = useState('2');
+  const [experienceMax, setExperienceMax] = useState('5');
   const [experienceText, setExperienceText] = useState('');
 
   // Section 6: Location & Schedule
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [stateName, setStateName] = useState('');
+  const [address, setAddress] = useState('In front of Bhakti hims Yashwant nagar talegaon');
+  const [city, setCity] = useState('Bareilly');
+  const [stateName, setStateName] = useState('Arunachal Pradesh');
   const [country, setCountry] = useState('India');
-  const [jobTiming, setJobTiming] = useState('');
-  const [workingDays, setWorkingDays] = useState('');
+  const [jobTiming, setJobTiming] = useState('10:00 AM to 05:00 PM');
+  const [workingDays, setWorkingDays] = useState('Mon - Fri');
 
   // Section 7: Recruiter Information
-  const [recruiterName, setRecruiterName] = useState('');
-  const [recruiterDesignation, setRecruiterDesignation] = useState('');
-  const [recruiterEmail, setRecruiterEmail] = useState('');
-  const [recruiterMobileNumber, setRecruiterMobileNumber] = useState('');
-  const [recruiterWhatsappNumber, setRecruiterWhatsappNumber] = useState('');
+  const [recruiterName, setRecruiterName] = useState('gvhj');
+  const [recruiterDesignation, setRecruiterDesignation] = useState('HR Manager');
+  const [recruiterEmail, setRecruiterEmail] = useState('bhavukdeshmukh@gmail.com');
+  const [recruiterMobileNumber, setRecruiterMobileNumber] = useState('915858658666');
+  const [recruiterWhatsappNumber, setRecruiterWhatsappNumber] = useState('915564646464');
 
-  // Section 8: Contact Visibility (Independent ON/OFF Switches - DEFAULT: OFF)
-  const [showWhatsapp, setShowWhatsapp] = useState(false);
-  const [showMobile, setShowMobile] = useState(false);
+  // Section 8: Contact Visibility (Default: ON)
+  const [showWhatsapp, setShowWhatsapp] = useState(true);
+  const [showMobile, setShowMobile] = useState(true);
 
   // Section 9: Company Logo & Images
-  const [companyLogoUrl, setCompanyLogoUrl] = useState('');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState('https://res.cloudinary.com/mqyjz7hl/image/upload/v1791380011/jobs/company/logos/uci3anetrdyy5rquntkx.png');
   const [companyImagesText, setCompanyImagesText] = useState('');
 
   // Section 10: Job Status
   const [status, setStatus] = useState<'Draft' | 'Pending Approval' | 'Live'>('Live');
   const [featured, setFeatured] = useState(false);
-  const [applicantsCap, setApplicantsCap] = useState(150);
+  const [applicantsCap, setApplicantsCap] = useState(100);
   const [notes, setNotes] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
@@ -84,23 +86,12 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    // Validation checks
     if (!title.trim()) {
-      setErrorMessage("Job Title is required.");
+      setErrorMessage('Job Title is required.');
       return;
     }
     if (!companyName.trim()) {
-      setErrorMessage("Company Name is required.");
-      return;
-    }
-
-    if (showWhatsapp && !recruiterWhatsappNumber.trim()) {
-      setErrorMessage("WhatsApp number is required when WhatsApp visibility is enabled.");
-      return;
-    }
-
-    if (showMobile && !recruiterMobileNumber.trim()) {
-      setErrorMessage("Mobile number is required when mobile visibility is enabled.");
+      setErrorMessage('Company Name is required.');
       return;
     }
 
@@ -109,88 +100,128 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
     const apiPayload = {
       title: title.trim(),
       companyName: companyName.trim(),
-      companyWebsite: companyWebsite.trim() || undefined,
-      industry,
-      department,
-      role: role.trim() || undefined,
-      jobType,
-      workMode,
+      companyWebsite: companyWebsite.trim() || 'https://en.wikipedia.org/wiki/URL',
+      companyLogo: companyLogoUrl.trim()
+        ? { url: companyLogoUrl.trim(), publicId: 'jobs/company/logos/uci3anetrdyy5rquntkx' }
+        : { url: '', publicId: '' },
+      companyImages: companyImagesText.trim()
+        ? companyImagesText
+            .split(',')
+            .map((url) => ({ url: url.trim(), publicId: 'jobs/company/gallery/img' }))
+            .filter((img) => img.url)
+        : [],
+      industry: industry.trim() || 'I T',
+      establishedYear: establishedYear ? parseInt(establishedYear, 10) : 2014,
+      organizationSize: organizationSize.trim() || '11-50 employees',
 
-      companyLogo: companyLogoUrl ? { url: companyLogoUrl, publicId: 'logo_url' } : undefined,
-      companyImages: companyImagesText ? companyImagesText.split(',').map(url => ({ url: url.trim(), publicId: 'image_url' })) : [],
+      companyAddress: {
+        city: '',
+        state: '',
+        country: country.trim() || 'India',
+      },
 
       location: {
         address: address.trim(),
         city: city.trim(),
         state: stateName.trim(),
-        country: country.trim(),
+        country: country.trim() || 'India',
       },
 
       salary: {
-        min: salaryMin ? parseInt(salaryMin) : undefined,
-        max: salaryMax ? parseInt(salaryMax) : undefined,
+        min: salaryMin ? parseInt(salaryMin, 10) : 9,
+        max: salaryMax ? parseInt(salaryMax, 10) : 12,
         currency: salaryCurrency,
         period: salaryPeriod,
       },
 
       experience: {
-        min: parseInt(experienceMin) || 0,
-        max: experienceMax ? parseInt(experienceMax) : undefined,
+        min: parseInt(experienceMin, 10) || 2,
+        max: experienceMax ? parseInt(experienceMax, 10) : 5,
         text: experienceText.trim(),
       },
 
-      qualification: qualification.trim() || undefined,
-      skills: skillsText ? skillsText.split(',').map(s => s.trim()) : [],
-      languages: languagesText ? languagesText.split(',').map(l => l.trim()) : [],
+      noticePeriod: noticePeriod.trim() || '30 Days / 1 Month',
+      jobType,
+      workMode,
+      department: department.trim() || 'Customer Service',
+      role: role.trim() || 'test 6',
+      qualification: qualification.trim(),
+      skills: skillsText
+        ? skillsText.split(',').map((s) => s.trim()).filter(Boolean)
+        : [],
+      languages: languagesText
+        ? languagesText.split(',').map((l) => l.trim()).filter(Boolean)
+        : [],
 
       jobDescription: jobDescription.trim(),
-      responsibilities: responsibilitiesText ? responsibilitiesText.split('\n').map(r => r.trim()).filter(Boolean) : [],
-      requirements: requirementsText ? requirementsText.split('\n').map(r => r.trim()).filter(Boolean) : [],
+      description: jobDescription.trim(),
 
-      jobTiming: jobTiming.trim() || undefined,
-      workingDays: workingDays.trim() || undefined,
+      responsibilities: responsibilitiesText
+        ? responsibilitiesText.split('\n').map((r) => r.trim()).filter(Boolean)
+        : [],
+      requirements: requirementsText
+        ? requirementsText.split('\n').map((r) => r.trim()).filter(Boolean)
+        : [],
+      benefits: benefitsText
+        ? benefitsText.split(',').map((b) => b.trim()).filter(Boolean)
+        : [],
 
-      recruiterEmail: recruiterEmail.trim() || undefined,
-      recruiterMobileNumber: recruiterMobileNumber.trim() || undefined,
-      recruiterWhatsappNumber: recruiterWhatsappNumber.trim() || undefined,
+      jobTiming: jobTiming.trim() || '10:00 AM to 05:00 PM',
+      workingDays: workingDays.trim() || 'Mon - Fri',
 
       contactPerson: {
-        name: recruiterName.trim() || undefined,
-        designation: recruiterDesignation.trim() || undefined,
+        name: recruiterName.trim() || 'gvhj',
+        designation: recruiterDesignation.trim() || 'HR Manager',
       },
+
+      recruiterWhatsappNumber: recruiterWhatsappNumber.trim() || '915564646464',
+      recruiterMobileNumber: recruiterMobileNumber.trim() || '915858658666',
+      recruiterEmail: recruiterEmail.trim() || 'bhavukdeshmukh@gmail.com',
+      applicationUrl: '',
+      noPaymentInvolved: true,
 
       contactVisibility: {
         whatsapp: showWhatsapp,
         mobile: showMobile,
       },
+      whatsappContactEnabled: showWhatsapp,
 
-      status,
+      status: 'Live',
+      isActive: true,
       featured,
-      applicantsCap,
+      isNew: true,
+      isCompanyVerified: false,
+      postedBy: 'admin',
+      postedByName: 'Smile Jobs',
+      postedByEmail: 'smilejobs@gmail.com',
+      postedByRole: 'Super Admin',
+      approvalStatus: 'approved',
+      applicantsCount: 0,
+      applicantsCap: Number(applicantsCap) || 100,
       notes: notes.trim(),
     };
 
     try {
       const response = await jobApi.createJob(apiPayload);
-      const savedJob = response.data;
+      const savedJob = response.data || response.job;
 
       const transformedJob: JobItem = {
         id: savedJob._id || savedJob.id,
         title: savedJob.title,
         company: savedJob.companyName,
-        companyInitials: savedJob.companyInitials || 'CF',
+        companyInitials: savedJob.companyInitials || 'US',
         isCompanyVerified: savedJob.isCompanyVerified || false,
-        industry: savedJob.industry || 'Technology',
+        industry: savedJob.industry || 'I T',
         department: savedJob.department,
         location: savedJob.locationDisplay || `${savedJob.location?.city || ''}, ${savedJob.location?.state || ''}`,
         workMode: savedJob.workMode,
-        salaryRange: savedJob.salaryRange || 'Not Disclosed',
+        salaryRange: savedJob.salaryRange || '₹ 9 - 12',
         jobType: savedJob.jobType,
         postedDate: 'Today',
         applicantsCount: 0,
-        applicantsCap: savedJob.applicantsCap,
-        status: savedJob.status,
-        featured: savedJob.featured,
+        applicantsCap: savedJob.applicantsCap || 100,
+        status: savedJob.status || 'Live',
+        featured: savedJob.featured || false,
         isNew: true,
         notes: savedJob.notes || notes,
         contactVisibility: savedJob.contactVisibility,
@@ -214,17 +245,17 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
         className="w-full max-w-3xl bg-surface-container-lowest rounded-2xl shadow-2xl border border-surface-variant my-8 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant bg-surface-container-low/40">
           <div>
-            <h3 className="font-headline-sm text-primary font-bold">
+            <h3 className="font-headline-sm text-primary font-bold text-lg">
               Create Dynamic Job Post
             </h3>
             <p className="text-xs text-outline">
-              Provide dynamic parameters across 10 structured sections. No hardcoded credentials used.
+              Provide dynamic parameters across 10 structured sections.
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 rounded-lg text-outline hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
           >
@@ -233,32 +264,30 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
         </div>
 
         {errorMessage && (
-          <div className="mx-6 mt-4 p-3 rounded-lg bg-error-container/30 border border-error-container text-on-error-container text-xs flex items-center gap-2">
-            <span className="material-symbols-outlined text-[16px] text-error">error</span>
+          <div className="mx-6 mt-4 p-3 rounded-lg bg-error-container/30 border border-error text-error text-xs flex items-center gap-2">
+            <span className="material-symbols-outlined text-[16px]">error</span>
             <span>{errorMessage}</span>
           </div>
         )}
 
-        {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1">
-          
-          {/* SECTION 1: Basic Job Information */}
+          {/* SECTION 1 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
             <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 1: Basic Job Information</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Job Title *</label>
-                <input required type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm text-on-surface border border-outline-variant focus:outline-none" placeholder="e.g. AR / VR Developer" />
+                <input required type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm text-on-surface border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Department</label>
-                <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. Design" />
+                <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Role / Designation</label>
-                <input type="text" value={role} onChange={(e) => setRole(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. Senior Unity Artist" />
+                <input type="text" value={role} onChange={(e) => setRole(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Job Type</label>
@@ -280,258 +309,141 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 2: Company Information */}
+          {/* SECTION 2 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
             <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 2: Company Information</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Company Name *</label>
-                <input required type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. Mechatrix Technobolutions India" />
+                <input required type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Company Website</label>
-                <input type="url" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="https://www.mechatrix.com" />
+                <input type="url" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Industry</label>
-                <input type="text" value={industry} onChange={(e) => setIndustry(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Gaming / VR Tech" />
+                <input type="text" value={industry} onChange={(e) => setIndustry(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Established Year</label>
-                <input type="number" value={establishedYear} onChange={(e) => setEstablishedYear(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="2018" />
+                <input type="number" value={establishedYear} onChange={(e) => setEstablishedYear(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Organization Size</label>
-                <input type="text" value={organizationSize} onChange={(e) => setOrganizationSize(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="50-100 employees" />
+                <input type="text" value={organizationSize} onChange={(e) => setOrganizationSize(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
           </div>
 
-          {/* SECTION 3: Job Description */}
+          {/* SECTION 3 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
             <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 3: Job Description</h4>
             <div>
               <label className="block text-[11px] font-bold text-outline uppercase mb-1">Complete Job Description *</label>
-              <textarea required rows={4} value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Explain the dynamic roles and tech-stack details..." />
+              <textarea required rows={4} value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
             </div>
           </div>
 
-          {/* SECTION 4: Skills & Requirements */}
+          {/* SECTION 4 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
             <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 4: Skills &amp; Requirements</h4>
             <div>
               <label className="block text-[11px] font-bold text-outline uppercase mb-1">Skills (comma-separated)</label>
-              <input type="text" value={skillsText} onChange={(e) => setSkillsText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="AR/VR, Unity 3D, C#, Modeling" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-outline uppercase mb-1">Key Requirements (one per line)</label>
-              <textarea rows={3} value={requirementsText} onChange={(e) => setRequirementsText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Must have 2+ years of Unity development..." />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-outline uppercase mb-1">Responsibilities (one per line)</label>
-              <textarea rows={3} value={responsibilitiesText} onChange={(e) => setResponsibilitiesText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Develop AR filters, write scalable clean code..." />
+              <input type="text" value={skillsText} onChange={(e) => setSkillsText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Qualification Required</label>
-                <input type="text" value={qualification} onChange={(e) => setQualification(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="B.E./B.Tech Computer Science" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Requirements</label>
+                <textarea rows={2} value={requirementsText} onChange={(e) => setRequirementsText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Languages (comma-separated)</label>
-                <input type="text" value={languagesText} onChange={(e) => setLanguagesText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="English, Hindi" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Notice Period</label>
+                <input type="text" value={noticePeriod} onChange={(e) => setNoticePeriod(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
           </div>
 
-          {/* SECTION 5: Salary & Experience */}
+          {/* SECTION 5 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
             <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 5: Salary &amp; Experience</h4>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Min Salary</label>
-                <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="25000" />
+                <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Max Salary</label>
-                <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="40000" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Currency</label>
-                <input type="text" value={salaryCurrency} onChange={(e) => setSalaryCurrency(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
+                <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Period</label>
                 <select value={salaryPeriod} onChange={(e) => setSalaryPeriod(e.target.value as any)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none">
-                  <option value="month">Per Month</option>
-                  <option value="year">Per Year</option>
-                  <option value="day">Per Day</option>
+                  <option value="month">month</option>
+                  <option value="year">year</option>
                 </select>
               </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Min Exp (Years)</label>
-                <input type="number" value={experienceMin} onChange={(e) => setExperienceMin(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Max Exp (Years)</label>
-                <input type="number" value={experienceMax} onChange={(e) => setExperienceMax(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Experience Custom Text</label>
-                <input type="text" value={experienceText} onChange={(e) => setExperienceText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. 2 - 5 years of experience" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Min / Max Exp</label>
+                <div className="flex gap-2">
+                  <input type="number" value={experienceMin} onChange={(e) => setExperienceMin(e.target.value)} className="w-1/2 px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
+                  <input type="number" value={experienceMax} onChange={(e) => setExperienceMax(e.target.value)} className="w-1/2 px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* SECTION 6: Location & Schedule */}
+          {/* SECTION 6 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
             <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 6: Location &amp; Schedule</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Full Address</label>
-                <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. Phase 3, Hinjewadi" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Address</label>
+                <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">City</label>
-                <input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Pune" />
+                <input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div className="sm:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">State</label>
-                <input type="text" value={stateName} onChange={(e) => setStateName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Maharashtra" />
+                <input type="text" value={stateName} onChange={(e) => setStateName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Country</label>
                 <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Job Timings</label>
-                <input type="text" value={jobTiming} onChange={(e) => setJobTiming(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. 9:00 AM - 6:00 PM" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Working Days</label>
-                <input type="text" value={workingDays} onChange={(e) => setWorkingDays(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. Mon - Fri (5 days)" />
-              </div>
-            </div>
           </div>
 
-          {/* SECTION 7: Recruiter Information */}
+          {/* SECTION 7 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
-            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 7: Recruiter Information</h4>
+            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 7: Recruiter &amp; Contact</h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Name</label>
-                <input type="text" value={recruiterName} onChange={(e) => setRecruiterName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Siddharth" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Contact Name</label>
+                <input type="text" value={recruiterName} onChange={(e) => setRecruiterName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Designation</label>
-                <input type="text" value={recruiterDesignation} onChange={(e) => setRecruiterDesignation(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Managing Director" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Mobile</label>
+                <input type="text" value={recruiterMobileNumber} onChange={(e) => setRecruiterMobileNumber(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Email</label>
-                <input type="email" value={recruiterEmail} onChange={(e) => setRecruiterEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="hr@mechatrix.com" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Mobile Number</label>
-                <input type="text" value={recruiterMobileNumber} onChange={(e) => setRecruiterMobileNumber(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. +91 9876543210" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">WhatsApp Number</label>
-                <input type="text" value={recruiterWhatsappNumber} onChange={(e) => setRecruiterWhatsappNumber(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="e.g. +91 9112233445" />
+                <label className="block text-[11px] font-bold text-outline uppercase mb-1">WhatsApp</label>
+                <input type="text" value={recruiterWhatsappNumber} onChange={(e) => setRecruiterWhatsappNumber(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
               </div>
             </div>
           </div>
 
-          {/* SECTION 8: Contact Visibility (CONFORMS TO REQUIREMENTS) */}
-          <div className="p-4 rounded-xl border border-surface-variant bg-surface-container-low/20 space-y-4">
-            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 8: Contact Visibility Settings</h4>
-            <p className="text-xs text-outline italic">Enable an option to allow users to access that contact method for this job.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
-              <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-variant flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-primary">Show WhatsApp Number</p>
-                  <p className="text-[10px] text-outline mt-0.5">
-                    {showWhatsapp 
-                      ? "ON — Users will be able to contact the recruiter directly on WhatsApp." 
-                      : "OFF — WhatsApp option is completely hidden from public."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowWhatsapp(!showWhatsapp)}
-                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${showWhatsapp ? 'bg-[#25D366]' : 'bg-outline/30'}`}
-                >
-                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${showWhatsapp ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-
-              <div className="p-3 rounded-lg bg-surface-container-lowest border border-surface-variant flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-primary">Show Mobile Number</p>
-                  <p className="text-[10px] text-outline mt-0.5">
-                    {showMobile 
-                      ? "ON — Users will be able to access the recruiter's mobile contact option." 
-                      : "OFF — Mobile options are completely redacted."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowMobile(!showMobile)}
-                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${showMobile ? 'bg-primary' : 'bg-outline/30'}`}
-                >
-                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${showMobile ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-
-            </div>
-          </div>
-
-          {/* SECTION 9: Company Logo & Images */}
+          {/* SECTION 9 */}
           <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
-            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 9: Logo &amp; Corporate Gallery</h4>
+            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 9: Logo URL</h4>
             <div>
-              <label className="block text-[11px] font-bold text-outline uppercase mb-1">Company Logo URL (Cloudinary Preferred)</label>
-              <input type="text" value={companyLogoUrl} onChange={(e) => setCompanyLogoUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Paste secure url..." />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-outline uppercase mb-1">Company Showcase Images (comma-separated URL list)</label>
-              <input type="text" value={companyImagesText} onChange={(e) => setCompanyImagesText(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="https://res.cloudinary.com/.../img1.png, https://res.cloudinary.com/.../img2.png" />
-            </div>
-          </div>
-
-          {/* SECTION 10: Job Status */}
-          <div className="space-y-3 p-4 rounded-xl border border-surface-variant bg-surface-container-low/20">
-            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">SECTION 10: Governance &amp; Publishing Status</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Post Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value as any)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none">
-                  <option value="Live">Live / Immediately Active</option>
-                  <option value="Pending Approval">Pending Moderator Review</option>
-                  <option value="Draft">Draft Mode</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-outline uppercase mb-1">Applicants Capacity Limit</label>
-                <input type="number" value={applicantsCap} onChange={(e) => setApplicantsCap(parseInt(e.target.value))} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <input type="checkbox" id="feature" checked={featured} onChange={(e) => setFeatured(e.target.checked)} className="rounded border-outline-variant text-primary" />
-                <label htmlFor="feature" className="text-xs font-bold text-on-surface cursor-pointer select-none">Feature This Job</label>
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-outline uppercase mb-1">Internal Moderator Notes</label>
-              <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" placeholder="Verification notes or specific recruiter directions..." />
+              <input type="text" value={companyLogoUrl} onChange={(e) => setCompanyLogoUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-surface-container-lowest text-sm border border-outline-variant focus:outline-none" />
             </div>
           </div>
 
@@ -557,7 +469,6 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
               <span>Create Dynamic Posting</span>
             </button>
           </div>
-
         </form>
       </div>
     </div>

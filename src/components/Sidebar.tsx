@@ -7,7 +7,7 @@ interface SidebarProps {
   onSelectTab: (tab: NavItem) => void;
   currentUser: AdminUser;
   pendingVerificationsCount?: number;
-  pendingJobsCount?: number;  // ✅ NEW
+  pendingJobsCount?: number;
   activeJobsCount?: number;
   totalCandidatesCount?: number;
   totalRecruitersCount?: number;
@@ -23,7 +23,7 @@ interface NavMenuItem {
   icon: string;
   count?: string | number;
   countColor?: string;
-  highlight?: boolean;  // ✅ NEW: Pulse animation for urgent items
+  highlight?: boolean;
 }
 
 const formatCount = (n: number): string => {
@@ -37,7 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   currentUser,
   pendingVerificationsCount = 0,
-  pendingJobsCount = 0,  // ✅ NEW
+  pendingJobsCount = 0,
   activeJobsCount = 0,
   totalCandidatesCount = 0,
   totalRecruitersCount = 0,
@@ -76,7 +76,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   ].filter((item) => isAllowed(item.id));
 
-  // ✅ NEW: Approvals section — dedicated job approval queue
   const approvalItems: NavMenuItem[] = [
     {
       id: 'job-approvals' as NavItem,
@@ -94,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       countColor: pendingVerificationsCount > 0 ? 'bg-amber-500 text-white animate-pulse font-bold' : 'bg-surface-container-highest text-on-surface font-semibold',
       highlight: pendingVerificationsCount > 0,
     },
-  ].filter((item) => isAllowed(item.id) || item.id === 'job-approvals'); // Always show job-approvals for admins
+  ].filter((item) => isAllowed(item.id) || item.id === 'job-approvals');
 
   const managementItems: NavMenuItem[] = [
     {
@@ -116,12 +115,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
       count: formatCount(activeJobsCount),
     },
     {
+      id: 'admin-jobs' as NavItem, // ✅ NEW: Admin-posted jobs section
+      label: 'Admin Jobs',
+      icon: 'shield_person',
+      countColor: 'bg-emerald-100 text-emerald-700 font-bold',
+    },
+    {
       id: 'applications',
       label: 'Applications',
       icon: 'description',
       count: formatCount(totalApplicationsCount),
     },
-  ].filter((item) => isAllowed(item.id));
+    {
+      id: 'application-hierarchy',
+      label: 'Apps by Company',
+      icon: 'account_tree',
+      count: formatCount(totalApplicationsCount),
+    },
+  ].filter((item) => isAllowed(item.id) || item.id === 'admin-jobs'); // Always allow admin-jobs for admin roles
 
   const operationsItems: NavMenuItem[] = [
     { id: 'payments-and-billing', label: 'Payments & Billing', icon: 'credit_card' },
@@ -213,7 +224,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Sections */}
         <nav className="p-space-sm space-y-space-md">
           {renderNavGroup('Overview', overviewItems)}
-          {/* ✅ NEW: Approvals section */}
           {renderNavGroup('Approvals', approvalItems)}
           {renderNavGroup('Management', managementItems)}
           {renderNavGroup('Operations', operationsItems)}

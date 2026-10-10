@@ -6,18 +6,19 @@ export type NavItem =
   | 'recruiters'
   | 'jobs'
   | 'applications'
+  | 'application-hierarchy'
   | 'resumes-and-profiles'
   | 'verification'
   | 'payments-and-billing'
-   | 'manage-subscriptions' 
+  | 'manage-subscriptions'
   | 'reports-and-complaints'
   | 'content-management'
-  | 'job-approvals' 
+  | 'job-approvals'
   | 'banners'
   | 'notifications'
   | 'roles-and-permissions'
   | 'platform-settings'
-  | 'bottom-nav-config' 
+  | 'bottom-nav-config'
   | 'admin-activity-log';
 
 export type AdminRole = string;
@@ -75,6 +76,7 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'recruiters',
     'jobs',
     'applications',
+    'application-hierarchy',
     'resumes-and-profiles',
     'verification',
     'payments-and-billing',
@@ -86,7 +88,7 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'roles-and-permissions',
     'platform-settings',
     'admin-activity-log',
-    'bottom-nav-config', 
+    'bottom-nav-config',
   ],
   'Admin': [
     'dashboard',
@@ -94,6 +96,7 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'recruiters',
     'jobs',
     'applications',
+    'application-hierarchy',
     'resumes-and-profiles',
     'verification',
     'reports-and-complaints',
@@ -101,7 +104,7 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'banners',
     'notifications',
     'admin-activity-log',
-    'bottom-nav-config', 
+    'bottom-nav-config',
   ],
   'Moderator': [
     'verification',
@@ -111,7 +114,7 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'resumes-and-profiles',
     'reports-and-complaints',
     'admin-activity-log',
-    'bottom-nav-config', 
+    'bottom-nav-config',
   ],
   'Support Agent': [
     'reports-and-complaints',
@@ -120,20 +123,20 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'resumes-and-profiles',
     'applications',
     'notifications',
-    'bottom-nav-config', 
+    'bottom-nav-config',
   ],
   'Content Manager': [
     'content-management',
     'banners',
     'notifications',
     'resumes-and-profiles',
-    'bottom-nav-config', 
+    'bottom-nav-config',
   ],
   'Finance Manager': [
     'payments-and-billing',
     'dashboard',
     'reports-and-complaints',
-    'bottom-nav-config', 
+    'bottom-nav-config',
   ],
 };
 
@@ -284,6 +287,13 @@ export interface JobItem {
   rejectionReason?: string;
   whatsapp?: { enabled: boolean; url?: string };
   notes?: string;
+  // Approval-flow fields (used by JobApprovalsView / JobsView)
+  approvalStatus?: string;
+  submittedForReviewAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  reviewNotes?: string;
+  lastEditedAfterApproval?: boolean;
 }
 
 export interface VerificationItem {
@@ -444,7 +454,6 @@ export const MOBILE_NAV_ITEM_META: Record<
   },
 };
 
-
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD STATS TYPES (real-time data from backend)
 // ═══════════════════════════════════════════════════════════
@@ -515,7 +524,6 @@ export interface DashboardStats {
     pendingCritical: number;
   };
 }
-
 
 // ═══════════════════════════════════════════════════════════
 // VERIFICATION TYPES (Real Backend Data)
@@ -636,3 +644,46 @@ export const DOC_TYPE_OPTIONS = [
   { value: 'authorization_letter', label: 'Authorization Letter' },
   { value: 'other', label: 'Other Document' },
 ];
+
+// ═══════════════════════════════════════════════════════════
+// APPLICATION HIERARCHY TYPES (Admin + Recruiter drill-down)
+// ═══════════════════════════════════════════════════════════
+export interface CompanyWithStats {
+  companyId: string;
+  companyName: string;
+  companyLogo: string | null;
+  companyInitials: string;
+  industry: string;
+  city: string;
+  state: string;
+  website: string;
+  verified: boolean;
+  isActive: boolean;
+  recruiterCount: number;
+  jobCount: number;
+  applicationCount: number;
+  pendingCount: number;
+}
+
+export interface JobWithStats {
+  jobId: string;
+  title: string;
+  companyName: string;
+  status: string;
+  isActive: boolean;
+  jobType: string;
+  workMode: string;
+  location: string;
+  salaryRange: string;
+  experienceText: string;
+  approvalStatus: string;
+  recruiterName: string;
+  recruiterId: string | null;
+  applicationCount: number;
+  pendingCount: number;
+  shortlistedCount: number;
+  interviewCount: number;
+  hiredCount: number;
+  rejectedCount: number;
+  postedAt: string;
+}
