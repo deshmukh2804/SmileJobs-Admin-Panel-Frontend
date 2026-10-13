@@ -1,6 +1,7 @@
 // FILE: frontend/src/components/Sidebar.tsx
 import React, { useMemo } from 'react';
 import { AdminUser, NavItem, ROLE_PERMISSIONS, getRoleBadgeClass } from '../types';
+import smileJobsLogo from '../assets/smilejobs.png';
 
 interface SidebarProps {
   currentTab: NavItem;
@@ -106,7 +107,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'application-hierarchy', label: 'Application of Recruiters', icon: 'account_tree', count: formatCount(totalApplicationsCount) },
   ].filter((item) => isAllowed(item.id) || item.id === 'admin-jobs');
 
-  // ✅ UPDATED: Added 2 new tabs for Candidate Profile Pricing feature
   const operationsItems: NavMenuItem[] = [
     { id: 'payments-and-billing', label: 'Payments & Billing', icon: 'credit_card' },
     {
@@ -139,6 +139,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const totalItems =
     overviewItems.length + approvalItems.length + managementItems.length + operationsItems.length + systemItems.length;
+
+  // Get user initials for fallback avatar
+  const getUserInitials = (name: string): string => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
 
   const renderNavGroup = (title: string, items: NavMenuItem[]) => {
     if (items.length === 0) return null;
@@ -184,16 +192,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="fixed left-0 top-0 h-screen w-[260px] bg-surface-container-lowest border-r border-surface-variant z-50 flex flex-col justify-between overflow-y-auto select-none">
       <div className="flex flex-col">
+        {/* ─── LOGO SECTION ─── */}
         <div className="h-16 px-space-md border-b border-surface-variant flex items-center justify-between gap-space-sm">
           <div
-            className="flex items-center gap-space-sm min-w-0 cursor-pointer"
+            className="flex items-center gap-space-sm min-w-0 cursor-pointer group"
             onClick={() => {
               if (isAllowed('dashboard')) onSelectTab('dashboard');
               else if (permittedTabs.length > 0) onSelectTab(permittedTabs[0]);
             }}
           >
-            <div className="h-9 w-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-md shrink-0">
-              <span className="material-symbols-outlined text-[22px]">sentiment_very_satisfied</span>
+            {/* ✅ REAL LOGO IMAGE */}
+            <div className="h-10 w-10 rounded-lg bg-white border border-surface-variant flex items-center justify-center shadow-sm shrink-0 overflow-hidden group-hover:shadow-md transition-shadow">
+              <img
+                src={smileJobsLogo}
+                alt="Smile Jobs Logo"
+                className="h-full w-full object-contain p-0.5"
+              />
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-bold text-primary truncate tracking-tight text-sm">Smile Jobs</span>
@@ -227,19 +241,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
+      {/* ─── USER PROFILE SECTION (Logo-based avatar) ─── */}
       <div className="p-space-sm border-t border-surface-variant bg-surface-container-lowest">
         <div className="p-2 rounded-xl bg-surface-container-low border border-surface-variant space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
-                <img
-                  alt={currentUser.name}
-                  className="w-8 h-8 rounded-full object-cover shadow-xs border border-surface-variant"
-                  src={
-                    currentUser.avatarUrl ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-                  }
-                />
+                {currentUser.avatarUrl ? (
+                  <img
+                    alt={currentUser.name}
+                    className="w-8 h-8 rounded-full object-cover shadow-xs border border-surface-variant"
+                    src={currentUser.avatarUrl}
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-xs shadow-xs border border-surface-variant">
+                    {getUserInitials(currentUser.name)}
+                  </div>
+                )}
                 <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-[#5F8A72] border-2 border-surface-container-lowest" />
               </div>
               <div className="flex flex-col min-w-0 text-left">
