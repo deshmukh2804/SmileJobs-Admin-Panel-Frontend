@@ -126,6 +126,14 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
 
+  // ✅ NEW: Track session restore state to prevent LoginView flash
+  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(() => {
+    // Initial state: true if token exists (we need to restore), false otherwise
+    const hasToken = localStorage.getItem('token') || localStorage.getItem('adminToken');
+    const hasInfo = localStorage.getItem('adminInfo');
+    return !!(hasToken && hasInfo);
+  });
+
   // ✅ Derive currentTab from URL
   const currentTab: NavItem = useMemo(() => {
     const path = location.pathname;
@@ -185,6 +193,7 @@ export default function App() {
       } catch {}
 
       setCurrentUser(null);
+      setIsRestoringSession(false);
       navigate('/login');
       setPostJobMode('closed');
       setEditingJobId(null);
@@ -423,12 +432,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, refreshSidebarCounts]);
 
+  // ✅ UPDATED: Session restore now preserves current URL (no forced redirect)
   useEffect(() => {
     const restoreSession = async () => {
       const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
       const storedInfo = localStorage.getItem('adminInfo');
 
-      if (!token || !storedInfo) return;
+      if (!token || !storedInfo) {
+        setIsRestoringSession(false);
+        return;
+      }
 
       try {
         const res = await adminApi.getMe();
@@ -449,11 +462,14 @@ export default function App() {
           };
 
           setCurrentUser(restoredUser);
-          // ✅ Only navigate if currently on login/root
+
+          // ✅ ONLY redirect if user is on root or login page
+          // Otherwise, PRESERVE their current URL (e.g., /jobs, /candidates, etc.)
           if (location.pathname === '/' || location.pathname === '/login') {
             const landing = res.admin.landingPage || ROLE_DEFAULT_TABS[res.admin.role] || 'dashboard';
-            navigate(TAB_TO_PATH[landing] || '/dashboard');
+            navigate(TAB_TO_PATH[landing] || '/dashboard', { replace: true });
           }
+          // ✅ Otherwise user stays on current page (e.g., /jobs stays /jobs)
         } else {
           localStorage.removeItem('token');
           localStorage.removeItem('adminToken');
@@ -463,6 +479,9 @@ export default function App() {
         localStorage.removeItem('token');
         localStorage.removeItem('adminToken');
         localStorage.removeItem('adminInfo');
+      } finally {
+        // ✅ Always mark restoration as complete
+        setIsRestoringSession(false);
       }
     };
     restoreSession();
@@ -530,6 +549,7 @@ export default function App() {
       await adminApi.logout();
     } catch {}
     setCurrentUser(null);
+    setIsRestoringSession(false);
     navigate('/login');
     setPostJobMode('closed');
     setEditingJobId(null);
@@ -723,6 +743,33 @@ export default function App() {
     }
   }, [location.pathname, postJobMode]);
 
+  // ✅ NEW: Show loading screen while session is being restored
+  // This prevents LoginView from flashing & redirecting away from current URL
+  if (isRestoringSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-white border border-surface-variant flex items-center justify-center shadow-lg overflow-hidden">
+            <img
+              src="/src/assets/smilejobs.png"
+              alt="Smile Jobs"
+              className="w-14 h-14 object-contain p-1"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </div>
+          <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+          <div className="text-center">
+            <p className="text-sm text-on-surface font-semibold">Restoring your session...</p>
+            <p className="text-xs text-outline mt-1">Please wait a moment</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Show LoginView only when session restore is complete AND no user
   if (!currentUser) {
     return (
       <>

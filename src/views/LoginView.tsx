@@ -10,12 +10,95 @@ interface LoginViewProps {
 
 type AuthFlowState = 'login' | 'two-factor' | 'locked-out' | 'role-picker';
 
+// Storage keys for Remember Me functionality
+const REMEMBER_ME_KEY = 'smilejobs_remember_me';
+const REMEMBERED_EMAIL_KEY = 'smilejobs_remembered_email';
+const REMEMBERED_PASSWORD_KEY = 'smilejobs_remembered_password';
+const REMEMBERED_EXPIRY_KEY = 'smilejobs_remembered_expiry';
+
+// Simple encoding/decoding for password (base64 - NOT secure encryption, just obfuscation)
+// For production, consider using Web Crypto API with a device-specific key
+const encodePassword = (password: string): string => {
+  try {
+    return btoa(encodeURIComponent(password));
+  } catch {
+    return '';
+  }
+};
+
+const decodePassword = (encoded: string): string => {
+  try {
+    return decodeURIComponent(atob(encoded));
+  } catch {
+    return '';
+  }
+};
+
+// Load remembered credentials from localStorage
+const loadRememberedCredentials = (): { email: string; password: string; remember: boolean } => {
+  try {
+    const remember = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+    if (!remember) {
+      return { email: '', password: '', remember: false };
+    }
+
+    // Check expiry (30 days)
+    const expiryStr = localStorage.getItem(REMEMBERED_EXPIRY_KEY);
+    if (expiryStr) {
+      const expiry = parseInt(expiryStr, 10);
+      if (Date.now() > expiry) {
+        // Expired - clear everything
+        localStorage.removeItem(REMEMBER_ME_KEY);
+        localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+        localStorage.removeItem(REMEMBERED_PASSWORD_KEY);
+        localStorage.removeItem(REMEMBERED_EXPIRY_KEY);
+        return { email: '', password: '', remember: false };
+      }
+    }
+
+    const email = localStorage.getItem(REMEMBERED_EMAIL_KEY) || '';
+    const encodedPassword = localStorage.getItem(REMEMBERED_PASSWORD_KEY) || '';
+    const password = encodedPassword ? decodePassword(encodedPassword) : '';
+
+    return { email, password, remember: true };
+  } catch {
+    return { email: '', password: '', remember: false };
+  }
+};
+
+// Save credentials to localStorage
+const saveRememberedCredentials = (email: string, password: string) => {
+  try {
+    const expiryTime = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days from now
+    localStorage.setItem(REMEMBER_ME_KEY, 'true');
+    localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+    localStorage.setItem(REMEMBERED_PASSWORD_KEY, encodePassword(password));
+    localStorage.setItem(REMEMBERED_EXPIRY_KEY, expiryTime.toString());
+  } catch (e) {
+    console.error('Failed to save remembered credentials:', e);
+  }
+};
+
+// Clear remembered credentials
+const clearRememberedCredentials = () => {
+  try {
+    localStorage.removeItem(REMEMBER_ME_KEY);
+    localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+    localStorage.removeItem(REMEMBERED_PASSWORD_KEY);
+    localStorage.removeItem(REMEMBERED_EXPIRY_KEY);
+  } catch (e) {
+    console.error('Failed to clear remembered credentials:', e);
+  }
+};
+
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [flowState, setFlowState] = useState<AuthFlowState>('login');
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  // Initialize state from localStorage on mount
+  const rememberedCreds = loadRememberedCredentials();
+  const [email, setEmail] = useState(rememberedCreds.email);
+  const [password, setPassword] = useState(rememberedCreds.password);
+  const [rememberMe, setRememberMe] = useState(rememberedCreds.remember);
   const [showPassword, setShowPassword] = useState(false);
 
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
@@ -66,6 +149,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     return () => clearInterval(timer);
   }, [flowState, lockoutSeconds]);
 
+  // Handle Remember Me checkbox change - clear credentials immediately if unchecked
+  const handleRememberMeChange = (checked: boolean) => {
+    setRememberMe(checked);
+    if (!checked) {
+      clearRememberedCredentials();
+    }
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -109,6 +200,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       localStorage.setItem('token', data.token);
       localStorage.setItem('adminToken', data.token);
       localStorage.setItem('adminInfo', JSON.stringify(data.admin));
+
+      // Save or clear remembered credentials based on checkbox
+      if (rememberMe) {
+        saveRememberedCredentials(email, password);
+      } else {
+        clearRememberedCredentials();
+      }
 
       setFailedAttempts(0);
 
@@ -236,6 +334,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <p className="text-xs text-on-surface-variant mt-1.5">
                   Enter your credentials to access your secure workspace.
                 </p>
+                {rememberMe && email && (
+                  <p className="text-[11px] text-[#5F8A72] mt-2 flex items-center justify-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                    <span>Credentials restored from this device</span>
+                  </p>
+                )}
               </div>
 
               {errorMessage && (
@@ -263,7 +367,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your email"
                       required
-                      autoComplete="off"
+                      autoComplete="email"
                       disabled={isLoading}
                       className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-outline/60"
                     />
@@ -285,7 +389,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
-                      autoComplete="new-password"
+                      autoComplete="current-password"
                       disabled={isLoading}
                       className="w-full pl-9 pr-10 py-2.5 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-outline/60"
                     />
@@ -311,7 +415,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     <input
                       type="checkbox"
                       checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
+                      onChange={(e) => handleRememberMeChange(e.target.checked)}
                       className="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4 cursor-pointer"
                     />
                     <span>Remember this device for 30 days</span>
