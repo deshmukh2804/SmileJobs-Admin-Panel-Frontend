@@ -11,6 +11,8 @@ export type NavItem =
   | 'verification'
   | 'payments-and-billing'
   | 'manage-subscriptions'
+  | 'payment-dashboard'
+  | 'candidate-profile-pricing'
   | 'reports-and-complaints'
   | 'content-management'
   | 'job-approvals'
@@ -81,6 +83,8 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'verification',
     'payments-and-billing',
     'manage-subscriptions',
+    'payment-dashboard',
+    'candidate-profile-pricing',
     'reports-and-complaints',
     'content-management',
     'banners',
@@ -99,6 +103,8 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
     'application-hierarchy',
     'resumes-and-profiles',
     'verification',
+    'payment-dashboard',
+    'candidate-profile-pricing',
     'reports-and-complaints',
     'content-management',
     'banners',
@@ -134,6 +140,8 @@ export const ROLE_PERMISSIONS: Record<string, NavItem[]> = {
   ],
   'Finance Manager': [
     'payments-and-billing',
+    'payment-dashboard',
+    'candidate-profile-pricing',
     'dashboard',
     'reports-and-complaints',
     'bottom-nav-config',
@@ -287,13 +295,20 @@ export interface JobItem {
   rejectionReason?: string;
   whatsapp?: { enabled: boolean; url?: string };
   notes?: string;
-  // Approval-flow fields (used by JobApprovalsView / JobsView)
+  // Approval-flow fields
   approvalStatus?: string;
   submittedForReviewAt?: string;
   approvedAt?: string;
   approvedBy?: string;
   reviewNotes?: string;
   lastEditedAfterApproval?: boolean;
+  // Poster fields (admin/recruiter detection)
+  postedBy?: string;
+  postedByName?: string;
+  postedByEmail?: string;
+  postedByRole?: string;
+  isAdminPosted?: boolean;
+  recruiterId?: any;
 }
 
 export interface VerificationItem {
@@ -455,7 +470,7 @@ export const MOBILE_NAV_ITEM_META: Record<
 };
 
 // ═══════════════════════════════════════════════════════════
-// DASHBOARD STATS TYPES (real-time data from backend)
+// DASHBOARD STATS TYPES
 // ═══════════════════════════════════════════════════════════
 export interface DashboardKpi {
   value: number;
@@ -526,7 +541,7 @@ export interface DashboardStats {
 }
 
 // ═══════════════════════════════════════════════════════════
-// VERIFICATION TYPES (Real Backend Data)
+// VERIFICATION TYPES
 // ═══════════════════════════════════════════════════════════
 export type VerificationStatus =
   | 'pending'
@@ -646,7 +661,7 @@ export const DOC_TYPE_OPTIONS = [
 ];
 
 // ═══════════════════════════════════════════════════════════
-// APPLICATION HIERARCHY TYPES (Admin + Recruiter drill-down)
+// APPLICATION HIERARCHY TYPES
 // ═══════════════════════════════════════════════════════════
 export interface CompanyWithStats {
   companyId: string;
@@ -686,4 +701,87 @@ export interface JobWithStats {
   hiredCount: number;
   rejectedCount: number;
   postedAt: string;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CANDIDATE PROFILE PRICING & PAYMENT TYPES
+// ═══════════════════════════════════════════════════════════
+
+export interface PricingConfig {
+  _id?: string;
+  enabled: boolean;
+  priceInPaise: number;
+  priceInRupees?: number;
+  currency: string;
+  razorpayKeyId: string;
+  razorpayKeySecretMasked: string;
+  hasKeySecret?: boolean;
+  razorpayMode: 'test' | 'live';
+  version: number;
+  updatedByName?: string;
+  updatedByEmail?: string;
+  updatedByRole?: string;
+  updatedAt?: string;
+}
+
+export interface TransactionItem {
+  _id: string;
+  recruiterId: string;
+  recruiterName: string;
+  recruiterEmail: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string;
+  amountInPaise: number;
+  amountInRupees?: number;
+  currency: string;
+  razorpayOrderId: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+  status: 'pending' | 'captured' | 'failed' | 'refunded';
+  refundId?: string;
+  refundReason?: string;
+  refundedAt?: string;
+  refundedByName?: string;
+  errorCode?: string;
+  errorDescription?: string;
+  accessGranted: boolean;
+  accessRevokedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentStats {
+  counts: {
+    total: number;
+    captured: number;
+    pending: number;
+    failed: number;
+    refunded: number;
+  };
+  revenue: {
+    totalCollectedPaise: number;
+    totalCollectedRupees: number;
+    totalRefundedPaise: number;
+    totalRefundedRupees: number;
+    netCollectedPaise: number;
+    netCollectedRupees: number;
+    currency: string;
+  };
+  recentTransactions: TransactionItem[];
+}
+
+export interface PricingAuditLogEntry {
+  _id: string;
+  action: string;
+  actorName: string;
+  actorEmail?: string;
+  actorRole?: string;
+  details?: string;
+  changesBefore?: any;
+  changesAfter?: any;
+  ipAddress?: string;
+  status: 'success' | 'failed';
+  errorMessage?: string;
+  createdAt: string;
 }

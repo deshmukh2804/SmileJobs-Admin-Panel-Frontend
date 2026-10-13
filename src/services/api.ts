@@ -152,6 +152,40 @@ export const jobApi = {
     const res = await safeFetch(`${API_BASE_URL}/jobs/${jobId}/contact-visibility`, { method: 'PATCH', headers: getJsonHeaders(), body: JSON.stringify({ whatsapp, mobile }) });
     return res.json();
   },
+  async getAdminPostedJobs(params?: Record<string, any>) {
+    const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/jobs/admin-posted${query}`, { headers: getJsonHeaders() });
+    return res.json();
+  },
+  async exportJobs(params?: Record<string, any>): Promise<{ success: boolean; filename: string; count?: number }> {
+    const clean: Record<string, string> = {};
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '' || v === 'All') return;
+        clean[k] = String(v);
+      });
+    }
+    const query = Object.keys(clean).length > 0 ? '?' + new URLSearchParams(clean).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/jobs/export${query}`, { method: 'GET', headers: { ...getAuthHeader() } });
+    if (!res.ok) {
+      let msg = 'Failed to export jobs';
+      try { const errData = await res.json(); msg = errData.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `SmileJobs_Jobs_${new Date().toISOString().slice(0, 10)}.csv`;
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    return { success: true, filename };
+  },
 };
 
 /* ═══════════════════════════ COMPANY API ═══════════════════════════ */
@@ -628,10 +662,9 @@ export const applicationApi = {
     const res = await safeFetch(`${API_BASE_URL}/applications/${id}`, { method: 'DELETE', headers: getJsonHeaders() });
     return res.json();
   },
-    async getApplicationsByJob(jobId: string, params?: Record<string, any>) {
+  async getApplicationsByJob(jobId: string, params?: Record<string, any>) {
     if (!isValidId(jobId)) throw new Error('Valid job ID is required');
     const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
-    // ✅ FIX: Route to the recruiter-and-admin-safe applications endpoint rather than the admin-only hierarchy endpoint
     const res = await safeFetch(`${API_BASE_URL}/applications/job/${encodeURIComponent(jobId)}${query}`, { headers: getJsonHeaders() });
     return res.json();
   },
@@ -644,6 +677,37 @@ export const applicationApi = {
   async bulkUpdateStatus(ids: string[], status: string) {
     const res = await safeFetch(`${API_BASE_URL}/applications/bulk-status`, { method: 'PATCH', headers: getJsonHeaders(), body: JSON.stringify({ ids, status }) });
     return res.json();
+  },
+  async exportApplications(params?: Record<string, any>): Promise<{ success: boolean; filename: string; count?: number }> {
+    const clean: Record<string, string> = {};
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '' || v === 'All' || v === 'all') return;
+        clean[k] = String(v);
+      });
+    }
+    const query = Object.keys(clean).length > 0 ? '?' + new URLSearchParams(clean).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/applications/export${query}`, { method: 'GET', headers: { ...getAuthHeader() } });
+    if (!res.ok) {
+      let msg = 'Failed to export applications';
+      try { const errData = await res.json(); msg = errData.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `SmileJobs_Applications_${new Date().toISOString().slice(0, 10)}.csv`;
+    const countHeader = res.headers.get('X-Export-Count');
+    const count = countHeader ? parseInt(countHeader, 10) : undefined;
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    return { success: true, filename, count };
   },
 };
 
@@ -666,20 +730,31 @@ export const applicationHierarchyApi = {
     const res = await safeFetch(`${API_BASE_URL}/applications/hierarchy/jobs/${encodeURIComponent(jobId)}/applications${query}`, { headers: getJsonHeaders() });
     return res.json();
   },
-  // ✅ UPDATED: Admin fetches jobs posted by a SPECIFIC recruiter by ID
   async getRecruiterJobs(recruiterId: string, params?: Record<string, any>) {
     if (!isValidId(recruiterId)) throw new Error('Valid recruiterId is required to fetch jobs');
     const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
     const res = await safeFetch(`${API_BASE_URL}/applications/hierarchy/recruiters/${encodeURIComponent(recruiterId)}/jobs${query}`, { headers: getJsonHeaders() });
     return res.json();
   },
-  // ✅ NEW: Admin fetches ALL jobs posted directly by the admin panel
   async getAdminPostedJobs(params?: Record<string, any>) {
     const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
-    const res = await safeFetch(`${API_BASE_URL}/applications/hierarchy/admin-posted-jobs${query}`, { headers: getJsonHeaders() });
+    try {
+      const res = await safeFetch(`${API_BASE_URL}/jobs/admin-posted${query}`, { headers: getJsonHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success !== false) return data;
+      }
+    } catch (err) {}
+    try {
+      const res = await safeFetch(`${API_BASE_URL}/applications/hierarchy/admin-posted-jobs${query}`, { headers: getJsonHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success !== false) return data;
+      }
+    } catch (err) {}
+    const res = await safeFetch(`${API_BASE_URL}/jobs?postedBy=admin&limit=200${query ? '&' + query.substring(1) : ''}`, { headers: getJsonHeaders() });
     return res.json();
   },
-  // ✅ NEW: Admin transitions application workflow status
   async updateApplicationStatus(applicationId: string, status: string, hrNotes?: string) {
     if (!isValidId(applicationId)) throw new Error('Valid application ID is required');
     const res = await safeFetch(`${API_BASE_URL}/applications/hierarchy/applications/${encodeURIComponent(applicationId)}/status`, {
@@ -689,7 +764,6 @@ export const applicationHierarchyApi = {
     });
     return res.json();
   },
-  // Recruiter self endpoints (legacy, unchanged)
   async getRecruiterJobsSelf(params?: Record<string, any>) {
     const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
     const res = await safeFetch(`${API_BASE_URL}/applications/hierarchy/recruiter/jobs${query}`, { headers: getJsonHeaders() });
@@ -773,6 +847,86 @@ export const billingApi = {
   },
   async updateLimits(id: string, payload: { candidateViewsLimit?: number; jobPostsLimit?: number }) {
     const res = await safeFetch(`${API_BASE_URL}/payments-and-billing/limits/${id}`, { method: 'PATCH', headers: getJsonHeaders(), body: JSON.stringify(payload) });
+    return res.json();
+  },
+};
+
+/* ═══════════════════════════ PRICING API (NEW) ═══════════════════════════ */
+import type { PricingConfig, TransactionItem, PaymentStats, PricingAuditLogEntry } from '../types';
+
+export const pricingApi = {
+  async getSettings(): Promise<{ success: boolean; config?: PricingConfig; message?: string }> {
+    const res = await safeFetch(`${API_BASE_URL}/pricing/settings`, { headers: getJsonHeaders() });
+    return res.json();
+  },
+  async updateSettings(payload: {
+    enabled?: boolean;
+    priceInPaise?: number;
+    currency?: string;
+    razorpayKeyId?: string;
+    razorpayKeySecret?: string;
+    razorpayMode?: 'test' | 'live';
+  }): Promise<{ success: boolean; config?: PricingConfig; message?: string }> {
+    const res = await safeFetch(`${API_BASE_URL}/pricing/settings`, {
+      method: 'PUT',
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  },
+  async getAuditLogs(params: { page?: number; limit?: number } = {}): Promise<{
+    success: boolean;
+    logs: PricingAuditLogEntry[];
+    total: number;
+    pages: number;
+    message?: string;
+  }> {
+    const query = Object.keys(params).length > 0 ? '?' + new URLSearchParams(params as any).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/pricing/audit-logs${query}`, { headers: getJsonHeaders() });
+    return res.json();
+  },
+};
+
+/* ═══════════════════════════ PAYMENT DASHBOARD API (NEW) ═══════════════════════════ */
+export const paymentDashboardApi = {
+  async getStats(): Promise<{ success: boolean; stats?: PaymentStats; message?: string }> {
+    const res = await safeFetch(`${API_BASE_URL}/payment-dashboard/stats`, { headers: getJsonHeaders() });
+    return res.json();
+  },
+  async getTransactions(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+  } = {}): Promise<{
+    success: boolean;
+    transactions: TransactionItem[];
+    total: number;
+    page: number;
+    pages: number;
+    message?: string;
+  }> {
+    const clean: Record<string, string> = {};
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === '') return;
+      clean[k] = String(v);
+    });
+    const query = Object.keys(clean).length > 0 ? '?' + new URLSearchParams(clean).toString() : '';
+    const res = await safeFetch(`${API_BASE_URL}/payment-dashboard/transactions${query}`, { headers: getJsonHeaders() });
+    return res.json();
+  },
+  async executeRefund(transactionId: string, reason?: string): Promise<{
+    success: boolean;
+    message?: string;
+    transaction?: TransactionItem;
+  }> {
+    const res = await safeFetch(`${API_BASE_URL}/payment-dashboard/transactions/${transactionId}/refund`, {
+      method: 'POST',
+      headers: getJsonHeaders(),
+      body: JSON.stringify({ reason }),
+    });
     return res.json();
   },
 };

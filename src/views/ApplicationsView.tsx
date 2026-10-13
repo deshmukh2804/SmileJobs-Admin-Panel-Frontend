@@ -122,8 +122,29 @@ const statusColorMap: Record<string, string> = {
   Withdrawn: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
-// Short-id helper — displays a short readable version of Mongo ObjectId
+// Short-id helper
 const shortId = (id?: string) => (id ? id.slice(-8).toUpperCase() : '—');
+
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM DOWNLOAD/EXPORT SVG ICON (matches Jobs page style)
+// ═══════════════════════════════════════════════════════════════
+const DownloadIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
 
 export const ApplicationsView: React.FC = () => {
   const [applications, setApplications] = useState<ApplicationItem[]>([]);
@@ -140,6 +161,7 @@ export const ApplicationsView: React.FC = () => {
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ status: string; label: string } | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -221,6 +243,31 @@ export const ApplicationsView: React.FC = () => {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  // EXPORT CSV HANDLER — respects current filters (status + search)
+  // ═══════════════════════════════════════════════════════════════
+  const handleExportCSV = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      showToast('Preparing CSV export... please wait', 'info');
+
+      // Build filter object from current state
+      const exportParams: Record<string, any> = {};
+      if (statusFilter && statusFilter !== 'all') exportParams.status = statusFilter;
+      if (searchTerm && searchTerm.trim()) exportParams.search = searchTerm.trim();
+      // If user has selected specific rows, export only those
+      if (selectedIds.length > 0) exportParams.ids = selectedIds.join(',');
+
+      const result = await applicationApi.exportApplications(exportParams);
+      showToast(`✅ Exported successfully as ${result.filename}`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Export failed', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
 
@@ -278,7 +325,6 @@ export const ApplicationsView: React.FC = () => {
         source: 'db' as const,
       };
     }
-    // Fallback to jobHr* fields on application
     return {
       id: null,
       name: app.jobHrName || 'Unknown Recruiter',
@@ -295,7 +341,7 @@ export const ApplicationsView: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      {/* ═══════════ COMPACT HEADER ═══════════ */}
+      {/* ═══════════ COMPACT HEADER (NOW WITH EXPORT BUTTON) ═══════════ */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-on-surface flex items-center gap-1.5">
@@ -304,13 +350,46 @@ export const ApplicationsView: React.FC = () => {
             <span className="text-xs font-normal text-outline">({total.toLocaleString()})</span>
           </h1>
         </div>
-        <button
-          onClick={fetchApplications}
-          className="px-2.5 py-1.5 rounded-md border border-surface-variant text-xs font-medium hover:bg-surface-container flex items-center gap-1 cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-[14px]">refresh</span>
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* EXPORT CSV BUTTON — custom SVG, loading state, filter-aware */}
+          <button
+            onClick={handleExportCSV}
+            disabled={isExporting || loading}
+            title={
+              selectedIds.length > 0
+                ? `Export ${selectedIds.length} selected applications`
+                : statusFilter !== 'all' || searchTerm
+                ? `Export filtered applications (${statusFilter !== 'all' ? statusFilter : 'All'}${searchTerm ? ' • search' : ''})`
+                : 'Export all applications'
+            }
+            className="px-2.5 py-1.5 rounded-md border border-primary/40 bg-primary/5 text-primary text-xs font-semibold hover:bg-primary/10 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {isExporting ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <DownloadIcon className="w-3.5 h-3.5" />
+                Export CSV
+                {selectedIds.length > 0 && (
+                  <span className="ml-0.5 text-[10px] bg-primary text-on-primary px-1 py-0 rounded">
+                    {selectedIds.length}
+                  </span>
+                )}
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={fetchApplications}
+            className="px-2.5 py-1.5 rounded-md border border-surface-variant text-xs font-medium hover:bg-surface-container flex items-center gap-1 cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[14px]">refresh</span>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* ═══════════ COMPACT FILTER CHIPS ═══════════ */}
@@ -510,7 +589,6 @@ export const ApplicationsView: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {/* Compact match circle */}
                 <div className="relative w-10 h-10">
                   <svg className="w-10 h-10 -rotate-90">
                     <circle cx="20" cy="20" r="17" stroke="currentColor" strokeWidth="3" fill="none" className="text-surface-container-high" />
@@ -551,7 +629,6 @@ export const ApplicationsView: React.FC = () => {
                   )}
                 </div>
 
-                {/* Horizontal compact steps */}
                 <div className="flex items-center gap-0 mb-3">
                   {WORKFLOW_STAGES.map((stage, idx) => {
                     const isCompleted = currentStageIndex > idx;
@@ -586,7 +663,6 @@ export const ApplicationsView: React.FC = () => {
                   })}
                 </div>
 
-                {/* Action buttons */}
                 {!isTerminalStatus && !isHiredFinal && selectedApp.workflow && (
                   <div className="pt-2 border-t border-primary/10">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -622,7 +698,6 @@ export const ApplicationsView: React.FC = () => {
 
               {/* ═════════ 2-COL GRID: CONTACT + JOB ═════════ */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* CONTACT */}
                 <section className="bg-surface-container-low rounded-lg p-3">
                   <h3 className="font-semibold text-[11px] text-on-surface flex items-center gap-1 mb-2 uppercase tracking-wide">
                     <span className="material-symbols-outlined text-[13px]">contact_page</span>
@@ -660,7 +735,6 @@ export const ApplicationsView: React.FC = () => {
                   )}
                 </section>
 
-                {/* JOB */}
                 <section className="bg-blue-50/50 border border-blue-100 rounded-lg p-3">
                   <h3 className="font-semibold text-[11px] text-on-surface flex items-center gap-1 mb-2 uppercase tracking-wide">
                     <span className="material-symbols-outlined text-[13px] text-blue-600">work</span>
@@ -689,7 +763,7 @@ export const ApplicationsView: React.FC = () => {
                 </section>
               </div>
 
-              {/* ═════════ RECRUITER (COMPACT + PROFESSIONAL) ═════════ */}
+              {/* ═════════ RECRUITER ═════════ */}
               {(() => {
                 const rec = getRecruiterDisplay(selectedApp);
                 return (
@@ -764,7 +838,7 @@ export const ApplicationsView: React.FC = () => {
                 );
               })()}
 
-              {/* ═════════ RESUME (COMPACT) ═════════ */}
+              {/* ═════════ RESUME ═════════ */}
               {selectedApp.resumeUrl && (
                 <section className="bg-surface-container-low rounded-lg p-2.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -853,7 +927,7 @@ export const ApplicationsView: React.FC = () => {
                 </section>
               )}
 
-              {/* ═════════ 3-COL: LANGUAGES / ASSETS / CERTS ═════════ */}
+              {/* ═════════ LANGUAGES / ASSETS / CERTS ═════════ */}
               {(selectedApp.candidateLanguages?.length > 0 || selectedApp.candidateAssets?.length > 0 || selectedApp.candidateCertifications?.length > 0) && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {selectedApp.candidateLanguages?.length > 0 && (
@@ -895,7 +969,7 @@ export const ApplicationsView: React.FC = () => {
                 </section>
               )}
 
-              {/* ═════════ TIMELINE (COMPACT) ═════════ */}
+              {/* ═════════ TIMELINE ═════════ */}
               {selectedApp.milestones?.length > 0 && (
                 <section className="bg-surface-container-low rounded-lg p-3">
                   <h3 className="font-semibold text-[11px] text-on-surface flex items-center gap-1 mb-2 uppercase tracking-wide">

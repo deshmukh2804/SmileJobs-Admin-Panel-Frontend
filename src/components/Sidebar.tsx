@@ -13,6 +13,7 @@ interface SidebarProps {
   totalRecruitersCount?: number;
   totalApplicationsCount?: number;
   reportsCount?: number;
+  totalPurchasesCount?: number;
   onOpenRolePicker: () => void;
   onLogout: () => void;
 }
@@ -43,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   totalRecruitersCount = 0,
   totalApplicationsCount = 0,
   reportsCount = 0,
+  totalPurchasesCount = 0,
   onOpenRolePicker,
   onLogout,
 }) => {
@@ -96,44 +98,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ].filter((item) => isAllowed(item.id) || item.id === 'job-approvals');
 
   const managementItems: NavMenuItem[] = [
-    {
-      id: 'candidates',
-      label: 'Candidates',
-      icon: 'person',
-      count: formatCount(totalCandidatesCount),
-    },
-    {
-      id: 'recruiters',
-      label: 'Recruiters',
-      icon: 'business_center',
-      count: formatCount(totalRecruitersCount),
-    },
-    {
-      id: 'jobs',
-      label: 'All Jobs',
-      icon: 'work',
-      count: formatCount(activeJobsCount),
-    },
-    {
-      id: 'admin-jobs' as NavItem, // ✅ NEW: Admin-posted jobs section
-      label: 'Admin Jobs',
-      icon: 'shield_person',
-      countColor: 'bg-emerald-100 text-emerald-700 font-bold',
-    },
-    {
-      id: 'applications',
-      label: 'Applications',
-      icon: 'description',
-      count: formatCount(totalApplicationsCount),
-    },
-    {
-      id: 'application-hierarchy',
-      label: 'Apps by Company',
-      icon: 'account_tree',
-      count: formatCount(totalApplicationsCount),
-    },
-  ].filter((item) => isAllowed(item.id) || item.id === 'admin-jobs'); // Always allow admin-jobs for admin roles
+    { id: 'candidates', label: 'Candidates', icon: 'person', count: formatCount(totalCandidatesCount) },
+    { id: 'recruiters', label: 'Recruiters', icon: 'business_center', count: formatCount(totalRecruitersCount) },
+    { id: 'jobs', label: 'All Jobs', icon: 'work', count: formatCount(activeJobsCount) },
+    { id: 'admin-jobs' as NavItem, label: 'Admin Applications', icon: 'shield_person', countColor: 'bg-emerald-100 text-emerald-700 font-bold' },
+    { id: 'applications', label: 'All Job Applications', icon: 'description', count: formatCount(totalApplicationsCount) },
+    { id: 'application-hierarchy', label: 'Application of Recruiters', icon: 'account_tree', count: formatCount(totalApplicationsCount) },
+  ].filter((item) => isAllowed(item.id) || item.id === 'admin-jobs');
 
+  // ✅ UPDATED: Added 2 new tabs for Candidate Profile Pricing feature
   const operationsItems: NavMenuItem[] = [
     { id: 'payments-and-billing', label: 'Payments & Billing', icon: 'credit_card' },
     {
@@ -141,6 +114,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Manage Subscriptions',
       icon: 'workspace_premium',
       countColor: 'bg-[#EAE8F4] text-[#6750A4] font-bold',
+    },
+    {
+      id: 'payment-dashboard',
+      label: 'Profile Purchases',
+      icon: 'payments',
+      count: totalPurchasesCount > 0 ? totalPurchasesCount : undefined,
+      countColor: 'bg-emerald-100 text-emerald-700 font-bold',
+    },
+    {
+      id: 'candidate-profile-pricing',
+      label: 'Profile Pricing Settings',
+      icon: 'price_change',
     },
     { id: 'banners', label: 'Banners', icon: 'image' },
     { id: 'notifications', label: 'Notifications', icon: 'notifications' },
@@ -199,7 +184,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="fixed left-0 top-0 h-screen w-[260px] bg-surface-container-lowest border-r border-surface-variant z-50 flex flex-col justify-between overflow-y-auto select-none">
       <div className="flex flex-col">
-        {/* Brand Header — Smile Jobs */}
         <div className="h-16 px-space-md border-b border-surface-variant flex items-center justify-between gap-space-sm">
           <div
             className="flex items-center gap-space-sm min-w-0 cursor-pointer"
@@ -221,7 +205,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </span>
         </div>
 
-        {/* Navigation Sections */}
         <nav className="p-space-sm space-y-space-md">
           {renderNavGroup('Overview', overviewItems)}
           {renderNavGroup('Approvals', approvalItems)}
@@ -244,7 +227,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* User Profile Footer */}
       <div className="p-space-sm border-t border-surface-variant bg-surface-container-lowest">
         <div className="p-2 rounded-xl bg-surface-container-low border border-surface-variant space-y-2">
           <div className="flex items-center justify-between">
@@ -261,9 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-[#5F8A72] border-2 border-surface-container-lowest" />
               </div>
               <div className="flex flex-col min-w-0 text-left">
-                <span className="text-on-surface truncate text-xs font-bold">
-                  {currentUser.name}
-                </span>
+                <span className="text-on-surface truncate text-xs font-bold">{currentUser.name}</span>
                 <span
                   className={`inline-block px-1.5 py-0.2 text-[9px] font-bold rounded mt-0.5 border w-fit truncate ${badgeClass}`}
                 >

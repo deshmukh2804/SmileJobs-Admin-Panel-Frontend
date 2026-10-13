@@ -26,10 +26,12 @@ import { NotificationsView } from './views/NotificationsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { PaymentsBillingView } from './views/PaymentsBillingView';
 import { SubscriptionManagementView } from './views/SubscriptionManagementView';
-import { AdminJobsView } from './views/AdminJobsView'; // New File Import
+import { AdminJobsView } from './views/AdminJobsView';
+import { PricingSettingsView } from './views/PricingSettingsView';
+import { PaymentDashboardView } from './views/PaymentDashboardView';
 
 import { INITIAL_JOBS, INITIAL_USERS, INITIAL_VERIFICATIONS } from './data/mockData';
-import { jobApi, adminApi, dashboardApi, API_BASE_URL } from './services/api';
+import { jobApi, adminApi, dashboardApi, API_BASE_URL, paymentDashboardApi } from './services/api';
 import {
   AdminUser,
   JobItem,
@@ -48,6 +50,7 @@ interface SidebarCounts {
   totalRecruitersCount: number;
   totalApplicationsCount: number;
   reportsCount: number;
+  totalPurchasesCount: number;
 }
 
 const INITIAL_SIDEBAR_COUNTS: SidebarCounts = {
@@ -58,11 +61,36 @@ const INITIAL_SIDEBAR_COUNTS: SidebarCounts = {
   totalRecruitersCount: 0,
   totalApplicationsCount: 0,
   reportsCount: 0,
+  totalPurchasesCount: 0,
+};
+
+const ADMIN_EMAILS = ['smilejobs@gmail.com', 'admin@smilejobs.com', 'admin@careerflow.com'];
+const ADMIN_ROLES = ['admin', 'super admin', 'superadmin', 'sub admin', 'subadmin'];
+const ADMIN_NAMES = ['smile jobs', 'smilejobs', 'admin'];
+const RECRUITER_ROLES = ['recruiter', 'employer', 'hr'];
+
+const detectIsAdminJob = (job: any): boolean => {
+  if (!job) return false;
+  if (typeof job.isAdminPosted === 'boolean') return job.isAdminPosted;
+  const pb = String(job.postedBy || '').toLowerCase().trim();
+  if (pb === 'admin') return true;
+  if (pb === 'recruiter') return false;
+  const role = String(job.postedByRole || '').toLowerCase().trim();
+  if (RECRUITER_ROLES.includes(role)) return false;
+  if (ADMIN_ROLES.includes(role)) return true;
+  const email = String(job.postedByEmail || '').toLowerCase().trim();
+  if (email && ADMIN_EMAILS.includes(email)) return true;
+  const name = String(job.postedByName || '').toLowerCase().trim();
+  if (name && ADMIN_NAMES.includes(name)) return true;
+  if (job.recruiterId) return false;
+  if (job.recruiterEmail && String(job.recruiterEmail).trim()) return false;
+  if (job.contactPerson && (job.contactPerson.name || job.contactPerson.designation)) return false;
+  return false;
 };
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
-  const [currentTab, setCurrentTab] = useState<any>('dashboard'); // flexible tab typing to support custom tabs
+  const [currentTab, setCurrentTab] = useState<any>('dashboard');
 
   const [jobs, setJobs] = useState<JobItem[]>(INITIAL_JOBS);
   const [users, setUsers] = useState<UserItem[]>(INITIAL_USERS);
@@ -198,6 +226,25 @@ export default function App() {
       }
     }
 
+    const isAdminPosted = detectIsAdminJob(job);
+    const resolvedPostedBy = isAdminPosted ? 'admin' : 'recruiter';
+    const resolvedPostedByName =
+      job.postedByName ||
+      (isAdminPosted
+        ? 'Smile Jobs'
+        : (job.recruiterId && typeof job.recruiterId === 'object' && job.recruiterId.name) ||
+          job.contactPerson?.name ||
+          'Recruiter');
+    const resolvedPostedByEmail =
+      job.postedByEmail ||
+      (isAdminPosted
+        ? 'smilejobs@gmail.com'
+        : (job.recruiterId && typeof job.recruiterId === 'object' && job.recruiterId.email) ||
+          job.recruiterEmail ||
+          '');
+    const resolvedPostedByRole =
+      job.postedByRole || (isAdminPosted ? 'Super Admin' : 'Recruiter');
+
     return {
       id: job._id || job.id,
       title: job.title || '',
@@ -255,7 +302,13 @@ export default function App() {
       approvedBy: job.approvedBy || '',
       reviewNotes: job.reviewNotes || '',
       lastEditedAfterApproval: job.lastEditedAfterApproval || false,
-    };
+      postedBy: resolvedPostedBy,
+      postedByName: resolvedPostedByName,
+      postedByEmail: resolvedPostedByEmail,
+      postedByRole: resolvedPostedByRole,
+      isAdminPosted,
+      recruiterId: job.recruiterId || null,
+    } as JobItem;
   };
 
   const refreshJobs = useCallback(async () => {
@@ -273,6 +326,14 @@ export default function App() {
   const refreshSidebarCounts = useCallback(async () => {
     try {
       const res = await dashboardApi.getStats();
+      let purchasesCount = 0;
+      try {
+        const payRes = await paymentDashboardApi.getStats();
+        if (payRes.success && payRes.stats) {
+          purchasesCount = payRes.stats.counts.total || 0;
+        }
+      } catch {}
+
       if (res.success && res.data) {
         setSidebarCounts({
           pendingVerificationsCount: res.data.kpis.pendingVerification.value || 0,
@@ -282,6 +343,7 @@ export default function App() {
           totalRecruitersCount: res.data.kpis.totalEmployers.value || 0,
           totalApplicationsCount: res.data.kpis.applications.value || 0,
           reportsCount: res.data.kpis.reportsComplaints.value || 0,
+          totalPurchasesCount: purchasesCount,
         });
       }
     } catch (err) {
@@ -527,18 +589,30 @@ export default function App() {
     refreshSidebarCounts();
   };
 
-  const handleExportData = (moduleName: string) => {
-    const filename = `SmileJobs_${moduleName}_Export_${new Date().toISOString().slice(0, 10)}.csv`;
-    const csvContent =
-      'data:text/csv;charset=utf-8,ID,Name,Type,Status,Date\nSJ-01,Record 1,Verified,Active,2026-10-12';
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast(`Exported ${moduleName} data to ${filename}`);
+  const handleExportData = async (moduleName: string, params?: Record<string, any>) => {
+    try {
+      if (moduleName === 'Jobs') {
+        showToast('Preparing CSV export... please wait', 'info');
+        const result = await jobApi.exportJobs(params || {});
+        showToast(`✅ Exported successfully as ${result.filename}`, 'success');
+        return;
+      }
+
+      const filename = `SmileJobs_${moduleName}_Export_${new Date().toISOString().slice(0, 10)}.csv`;
+      const csvContent =
+        'data:text/csv;charset=utf-8,ID,Name,Type,Status,Date\nSJ-01,Record 1,Verified,Active,2026-10-12';
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`Exported ${moduleName} data to ${filename}`);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      showToast(err?.message || 'Export failed. Please try again.', 'error');
+    }
   };
 
   const permittedTabs = useMemo<NavItem[]>(() => {
@@ -549,7 +623,6 @@ export default function App() {
       roleName.toLowerCase() === 'super admin' || roleName.toLowerCase() === 'superadmin';
 
     if (isSuperAdmin) {
-      // Automatically permit custom admin-jobs tab as well
       const basePermitted = ROLE_PERMISSIONS['Super Admin'] || [];
       return [...basePermitted, 'admin-jobs' as any];
     }
@@ -562,7 +635,7 @@ export default function App() {
   }, [currentUser]);
 
   const isTabPermitted = useMemo(() => {
-    if (currentTab === 'admin-jobs') return true; // Custom admin jobs section bypass
+    if (currentTab === 'admin-jobs') return true;
     if (currentTab === 'job-approvals') {
       const roleName = (currentUser?.activeRole || '').toLowerCase();
       if (roleName === 'super admin' || roleName === 'superadmin' || roleName === 'admin') return true;
@@ -612,6 +685,7 @@ export default function App() {
         totalRecruitersCount={sidebarCounts.totalRecruitersCount}
         totalApplicationsCount={sidebarCounts.totalApplicationsCount}
         reportsCount={sidebarCounts.reportsCount}
+        totalPurchasesCount={sidebarCounts.totalPurchasesCount}
         onOpenRolePicker={() => setIsRolePickerOpen(true)}
         onLogout={handleLogout}
       />
@@ -671,6 +745,10 @@ export default function App() {
 
             {currentTab === 'manage-subscriptions' && <SubscriptionManagementView />}
 
+            {/* ✅ NEW: Candidate Profile Pricing & Payment Dashboard */}
+            {currentTab === 'candidate-profile-pricing' && <PricingSettingsView />}
+            {currentTab === 'payment-dashboard' && <PaymentDashboardView />}
+
             {currentTab === 'jobs' &&
               (postJobMode !== 'closed' ? (
                 <PostJobView
@@ -692,7 +770,7 @@ export default function App() {
                   onToggleFeature={handleToggleJobFeature}
                   onToggleStatus={handleToggleJobStatus}
                   onSelectTab={(tab) => setCurrentTab(tab)}
-                  onExport={() => handleExportData('Jobs')}
+                  onExport={(filters?: Record<string, any>) => handleExportData('Jobs', filters)}
                 />
               ))}
 
@@ -714,8 +792,7 @@ export default function App() {
             {currentTab === 'roles-and-permissions' && <RolesPermissionsView />}
             {currentTab === 'bottom-nav-config' && <BottomNavConfigView />}
             {currentTab === 'notifications' && <NotificationsView />}
-            
-            {/* Custom Admin Posted Jobs Tab */}
+
             {currentTab === 'admin-jobs' && <AdminJobsView />}
 
             {![
@@ -733,7 +810,9 @@ export default function App() {
               'notifications',
               'payments-and-billing',
               'manage-subscriptions',
-              'admin-jobs'
+              'admin-jobs',
+              'candidate-profile-pricing',
+              'payment-dashboard',
             ].includes(currentTab) && (
               <PlaceholderView tab={currentTab} onSelectTab={(tab) => setCurrentTab(tab)} />
             )}

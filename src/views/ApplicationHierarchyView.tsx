@@ -95,6 +95,45 @@ const statusColorMap: Record<string, string> = {
 
 const shortId = (id?: string) => (id ? id.slice(-8).toUpperCase() : '—');
 
+// ════════════════════════════════════════════════════════════════
+// ✅ SAFE FORMATTING HELPERS (prevents [object Object] display)
+// ════════════════════════════════════════════════════════════════
+const formatLocation = (loc: any): string => {
+  if (!loc) return '';
+  if (typeof loc === 'string') return loc;
+  if (typeof loc === 'object') {
+    const parts = [loc.city, loc.state, loc.country].filter(Boolean);
+    if (parts.length > 0) return parts.join(', ');
+    if (loc.address) return String(loc.address);
+  }
+  return '';
+};
+
+const formatSalary = (sal: any): string => {
+  if (!sal) return '';
+  if (typeof sal === 'string') return sal;
+  if (typeof sal === 'object') {
+    const min = sal.min || 0;
+    const max = sal.max || 0;
+    const currency = sal.currency || 'INR';
+    const symbol = currency === 'INR' ? '₹' : currency;
+    const period = sal.period || 'month';
+    if (min || max) return `${symbol}${min} - ${symbol}${max} / ${period}`;
+  }
+  return '';
+};
+
+const formatRecruiterName = (job: any): string => {
+  return (
+    job?.recruiterName ||
+    job?.recruiter?.name ||
+    job?.postedByName ||
+    (job?.postedBy === 'admin' ? 'Smile Jobs (Admin)' : '') ||
+    job?.contactPerson?.name ||
+    '—'
+  );
+};
+
 export const ApplicationHierarchyView: React.FC = () => {
   // ── Navigation state ──
   const [level, setLevel] = useState<HierarchyLevel>('companies');
@@ -146,7 +185,7 @@ export const ApplicationHierarchyView: React.FC = () => {
       if (res.success) {
         setCompanies(res.data || []);
         setTotalPages(res.pagination?.pages || 1);
-        setTotal(res.pagination?.total || 0);
+        setTotal(res.pagination?.total || (res.data || []).length || 0);
       } else {
         showToast(res.message || 'Failed to load companies', 'error');
       }
@@ -168,7 +207,8 @@ export const ApplicationHierarchyView: React.FC = () => {
       if (res.success) {
         setJobs(res.data || []);
         setTotalPages(res.pagination?.pages || 1);
-        setTotal(res.pagination?.total || 0);
+        // ✅ Fallback: use list length if pagination is missing (fixes "(0)" header issue)
+        setTotal(res.pagination?.total || (res.data || []).length || 0);
       } else {
         showToast(res.message || 'Failed to load jobs', 'error');
       }
@@ -192,7 +232,7 @@ export const ApplicationHierarchyView: React.FC = () => {
         const list: ApplicationItem[] = res.data || [];
         setApplications(list);
         setTotalPages(res.pagination?.pages || 1);
-        setTotal(res.pagination?.total || 0);
+        setTotal(res.pagination?.total || list.length || 0);
 
         // Sync currently-open detail panel ONLY if its id still exists.
         const currentId = selectedAppIdRef.current;
@@ -379,7 +419,7 @@ export const ApplicationHierarchyView: React.FC = () => {
         <h1 className="text-xl font-bold text-on-surface flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[22px] text-primary">apartment</span>
           Companies
-          <span className="text-xs font-normal text-outline">({total.toLocaleString()})</span>
+          <span className="text-xs font-normal text-outline">({(total || companies.length).toLocaleString()})</span>
         </h1>
         <button onClick={fetchCompanies} className="px-2.5 py-1.5 rounded-md border border-surface-variant text-xs font-medium hover:bg-surface-container flex items-center gap-1 cursor-pointer">
           <span className="material-symbols-outlined text-[14px]">refresh</span> Refresh
@@ -468,7 +508,7 @@ export const ApplicationHierarchyView: React.FC = () => {
         <h1 className="text-lg font-bold text-on-surface flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[20px] text-primary">work</span>
           Jobs — <span className="text-primary">{selectedCompany?.name}</span>
-          <span className="text-xs font-normal text-outline">({total.toLocaleString()})</span>
+          <span className="text-xs font-normal text-outline">({(total || jobs.length).toLocaleString()})</span>
         </h1>
         <button onClick={fetchJobs} className="px-2.5 py-1.5 rounded-md border border-surface-variant text-xs font-medium hover:bg-surface-container flex items-center gap-1 cursor-pointer">
           <span className="material-symbols-outlined text-[14px]">refresh</span> Refresh
@@ -501,8 +541,14 @@ export const ApplicationHierarchyView: React.FC = () => {
 
       {loading ? renderLoading() : jobs.length === 0 ? renderEmpty('No jobs found for this company') : (
         <div className="space-y-1.5">
-          {jobs.map((j, idx) => {
-            const jobId = (j as any).jobId || (j as any)._id || (j as any).id || `job-${idx}`;
+          {jobs.map((j: any, idx) => {
+            const jobId = j.jobId || j._id || j.id || `job-${idx}`;
+
+            // ✅ Safe-render strings only — no more [object Object]
+            const locationText = formatLocation(j.location) || formatLocation(j.locationObject);
+            const salaryText = formatSalary(j.salary) || formatSalary(j.salaryObject) || j.salaryRange || '';
+            const recruiterText = formatRecruiterName(j);
+
             return (
               <div
                 key={String(jobId)}
@@ -523,23 +569,25 @@ export const ApplicationHierarchyView: React.FC = () => {
                       )}
                     </div>
                     <p className="text-[10px] text-outline mt-0.5">
-                      {j.jobType} • {j.workMode}{j.location ? ` • ${j.location}` : ''}
+                      {j.jobType || 'Full-Time'} • {j.workMode || 'On-site'}
+                      {locationText ? ` • ${locationText}` : ''}
                     </p>
                     <p className="text-[10px] text-on-surface-variant mt-0.5">
-                      Recruiter: <strong>{j.recruiterName}</strong> • {j.salaryRange}
+                      Recruiter: <strong>{recruiterText}</strong>
+                      {salaryText ? <> • {salaryText}</> : null}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-center">
-                      <p className="text-sm font-bold text-primary">{j.applicationCount}</p>
+                      <p className="text-sm font-bold text-primary">{j.applicationCount ?? 0}</p>
                       <p className="text-[9px] text-outline">Apps</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold text-amber-600">{j.pendingCount}</p>
+                      <p className="text-sm font-bold text-amber-600">{j.pendingCount ?? 0}</p>
                       <p className="text-[9px] text-outline">Pending</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold text-green-600">{j.hiredCount}</p>
+                      <p className="text-sm font-bold text-green-600">{j.hiredCount ?? 0}</p>
                       <p className="text-[9px] text-outline">Hired</p>
                     </div>
                     <span className="material-symbols-outlined text-[16px] text-outline">chevron_right</span>
@@ -566,7 +614,7 @@ export const ApplicationHierarchyView: React.FC = () => {
         <h1 className="text-lg font-bold text-on-surface flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[20px] text-primary">description</span>
           Applications — <span className="text-primary">{selectedJob?.title}</span>
-          <span className="text-xs font-normal text-outline">({total.toLocaleString()})</span>
+          <span className="text-xs font-normal text-outline">({(total || applications.length).toLocaleString()})</span>
         </h1>
         <button onClick={backToJobs} className="px-2.5 py-1.5 rounded-md border border-surface-variant text-xs font-medium hover:bg-surface-container flex items-center gap-1 cursor-pointer">
           <span className="material-symbols-outlined text-[14px]">arrow_back</span> Back to Jobs

@@ -14,8 +14,23 @@ interface JobsViewProps {
   onToggleFeature: (id: string) => void;
   onToggleStatus: (id: string) => void;
   onSelectTab: (tab: NavItem) => void;
-  onExport: () => void;
+  onExport: (filters?: Record<string, any>) => void; // ✅ Now accepts filters
 }
+
+// ───────────────────────────────────────────────────────────
+// ✅ CUSTOM SVG ICONS
+// ───────────────────────────────────────────────────────────
+const AdminShieldIcon = ({ size = 14, color = '#ffffff' }: { size?: number; color?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} fill={color} style={{ flexShrink: 0, display: 'inline-block' }}>
+    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 6h2v2h-2V7zm0 4h2v6h-2v-6z"/>
+  </svg>
+);
+
+const RecruiterBadgeIcon = ({ size = 14, color = '#ffffff' }: { size?: number; color?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} fill={color} style={{ flexShrink: 0, display: 'inline-block' }}>
+    <path d="M20 7h-4V5c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-6 0h-4V5h4v2zm-2 5c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3z"/>
+  </svg>
+);
 
 const WhatsAppIcon = ({ active, size = 14 }: { active: boolean; size?: number }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} fill={active ? '#25D366' : '#9CA3AF'} className="shrink-0 transition-colors">
@@ -28,6 +43,147 @@ const PhoneIcon = ({ active, size = 14 }: { active: boolean; size?: number }) =>
     <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57-.35-.11-.74-.03-1.02.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.58l2.2-2.21c.28-.27.36-.66.25-1.01C8.7 6.45 8.5 5.25 8.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1zM19 12h2c0-4.97-4.03-9-9-9v2c3.87 0 7 3.13 7 7zm-4 0h2c0-2.76-2.24-5-5-5v2c1.66 0 3 1.34 3 3z" />
   </svg>
 );
+
+// ═══════════════════════════════════════════════════════════════
+// ✅ SMART POSTER DETECTION HELPER
+// Trusts backend's postedBy / isAdminPosted first, then falls back
+// to field inspection for jobs that haven't been migrated yet.
+// ═══════════════════════════════════════════════════════════════
+const detectIsAdminJob = (job: any): boolean => {
+  if (!job) return false;
+
+  // 1. Explicit backend boolean (set by transformJobForFrontend)
+  if (typeof job.isAdminPosted === 'boolean') return job.isAdminPosted;
+
+  // 2. Explicit postedBy string
+  const pb = String(job.postedBy || '').toLowerCase().trim();
+  if (pb === 'admin') return true;
+  if (pb === 'recruiter') return false;
+
+  // 3. postedByRole check
+  const role = String(job.postedByRole || '').toLowerCase().trim();
+  if (['admin', 'super admin', 'superadmin', 'sub admin', 'subadmin'].includes(role)) return true;
+  if (['recruiter', 'employer', 'hr'].includes(role)) return false;
+
+  // 4. Admin email check
+  const adminEmails = ['smilejobs@gmail.com', 'admin@smilejobs.com', 'admin@careerflow.com'];
+  const email = String(job.postedByEmail || '').toLowerCase().trim();
+  if (email && adminEmails.includes(email)) return true;
+
+  // 5. Admin name check
+  const nm = String(job.postedByName || '').toLowerCase().trim();
+  if (nm === 'smile jobs' || nm === 'smilejobs' || nm === 'admin') return true;
+
+  // 6. If recruiterId exists AND no admin markers → recruiter
+  if (job.recruiterId) return false;
+
+  // 7. Default fallback
+  return false;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// POSTED-BY TAG
+// ═══════════════════════════════════════════════════════════════
+const PostedByTag = ({ job, compact = false }: { job: JobItem; compact?: boolean }) => {
+  const isAdmin = detectIsAdminJob(job);
+
+  const posterName =
+    (job as any).postedByName ||
+    ((job as any).recruiterId && typeof (job as any).recruiterId === 'object' ? ((job as any).recruiterId as any).name : '') ||
+    ((job as any).contactPerson && (job as any).contactPerson.name) ||
+    (isAdmin ? 'Smile Jobs' : 'Recruiter');
+
+  const posterEmail =
+    (job as any).postedByEmail ||
+    ((job as any).recruiterId && typeof (job as any).recruiterId === 'object' ? ((job as any).recruiterId as any).email : '') ||
+    (job as any).recruiterEmail ||
+    '';
+
+  const posterRole = (job as any).postedByRole || (isAdmin ? 'Super Admin' : 'Recruiter');
+
+  const bgGradient = isAdmin
+    ? 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)'
+    : 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)';
+  const borderColor = isAdmin ? '#1d4ed8' : '#b45309';
+  const label = isAdmin ? 'ADMIN JOB' : 'RECRUITER JOB';
+  const title = isAdmin
+    ? `🛡️ Admin Posted Job\n\nName: ${posterName}\nEmail: ${posterEmail}\nRole: ${posterRole}\n\nThis job was posted directly via the Admin Portal.`
+    : `👤 Recruiter Posted Job\n\nName: ${posterName}\nEmail: ${posterEmail}\nRole: ${posterRole}\n\nThis job was posted by an external recruiter.`;
+
+  if (compact) {
+    return (
+      <span
+        title={title}
+        style={{
+          background: bgGradient,
+          border: `1px solid ${borderColor}`,
+          color: '#ffffff',
+          fontSize: '10px',
+          fontWeight: 800,
+          letterSpacing: '0.3px',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+          cursor: 'help',
+          userSelect: 'none',
+          whiteSpace: 'nowrap',
+          lineHeight: 1,
+          verticalAlign: 'middle',
+        }}
+      >
+        {isAdmin ? <AdminShieldIcon size={10} /> : <RecruiterBadgeIcon size={10} />}
+        <span>{isAdmin ? 'ADMIN' : 'RECRUITER'}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title={title}
+      style={{
+        background: bgGradient,
+        border: `1px solid ${borderColor}`,
+        color: '#ffffff',
+        fontSize: '11px',
+        fontWeight: 800,
+        letterSpacing: '0.4px',
+        padding: '4px 10px',
+        borderRadius: '8px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+        cursor: 'help',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+        maxWidth: '280px',
+        lineHeight: 1,
+        verticalAlign: 'middle',
+      }}
+    >
+      {isAdmin ? <AdminShieldIcon size={12} /> : <RecruiterBadgeIcon size={12} />}
+      <span>{label}</span>
+      <span style={{ width: '1px', height: '10px', background: 'rgba(255,255,255,0.4)', display: 'inline-block' }} />
+      <span
+        style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          opacity: 0.95,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          maxWidth: '120px',
+          display: 'inline-block',
+        }}
+      >
+        {posterName}
+      </span>
+    </span>
+  );
+};
 
 export const JobsView: React.FC<JobsViewProps> = ({
   jobs: propJobs,
@@ -45,7 +201,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [jobTypeFilter, setJobTypeFilter] = useState('All');
   const [workModeFilter, setWorkModeFilter] = useState('All');
-  // ✅ NEW: Posted-By source filter
   const [postedByFilter, setPostedByFilter] = useState<'All' | 'admin' | 'recruiter'>('All');
 
   const [apiJobs, setApiJobs] = useState<JobItem[]>([]);
@@ -54,6 +209,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [apiError, setApiError] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false); // ✅ NEW: Export loading state
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
@@ -61,7 +217,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [counts, setCounts] = useState({ total: 0, live: 0, pending: 0, rejected: 0, expired: 0, adminPosted: 0, recruiterPosted: 0 });
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
 
   const jobs = useMemo(() => {
     const source = apiJobs.length > 0 ? apiJobs : propJobs;
@@ -97,6 +253,67 @@ export const JobsView: React.FC<JobsViewProps> = ({
       }
     }
 
+    let locationDisplay = '';
+    if (job.locationDisplay) {
+      locationDisplay = job.locationDisplay;
+    } else if (job.location) {
+      if (typeof job.location === 'string') {
+        locationDisplay = job.location;
+      } else if (typeof job.location === 'object') {
+        const parts = [job.location.city, job.location.state, job.location.country].filter(Boolean);
+        if (parts.length > 0) {
+          locationDisplay = parts.join(', ');
+        } else if (job.location.address) {
+          locationDisplay = job.location.address;
+        }
+      }
+    }
+
+    let salaryRange = 'Not Disclosed';
+    if (job.salaryRange && typeof job.salaryRange === 'string' && job.salaryRange !== 'Not Disclosed') {
+      salaryRange = job.salaryRange;
+    } else if (job.salary && typeof job.salary === 'object') {
+      const min = job.salary.min || 0;
+      const max = job.salary.max || 0;
+      const currency = job.salary.currency || 'INR';
+      const symbol = currency === 'INR' ? '₹' : currency;
+      const period = job.salary.period || 'month';
+      if (min || max) {
+        salaryRange = `${symbol}${min.toLocaleString()} - ${symbol}${max.toLocaleString()} / ${period}`;
+      }
+    }
+
+    // ✅ SMART DETECTION — uses helper that checks multiple fields
+    const isAdminPosted = detectIsAdminJob(job);
+    const resolvedPostedBy: 'admin' | 'recruiter' = isAdminPosted ? 'admin' : 'recruiter';
+
+    // ✅ Resolve poster name from best available source
+    let resolvedPostedByName = job.postedByName || '';
+    if (!resolvedPostedByName) {
+      if (isAdminPosted) {
+        resolvedPostedByName = 'Smile Jobs';
+      } else if (job.recruiterId && typeof job.recruiterId === 'object' && job.recruiterId.name) {
+        resolvedPostedByName = job.recruiterId.name;
+      } else if (job.contactPerson?.name) {
+        resolvedPostedByName = job.contactPerson.name;
+      } else {
+        resolvedPostedByName = 'Recruiter';
+      }
+    }
+
+    let resolvedPostedByEmail = job.postedByEmail || '';
+    if (!resolvedPostedByEmail) {
+      if (isAdminPosted) {
+        resolvedPostedByEmail = 'smilejobs@gmail.com';
+      } else if (job.recruiterId && typeof job.recruiterId === 'object' && job.recruiterId.email) {
+        resolvedPostedByEmail = job.recruiterId.email;
+      } else if (job.recruiterEmail) {
+        resolvedPostedByEmail = job.recruiterEmail;
+      }
+    }
+
+    const resolvedPostedByRole = job.postedByRole || (isAdminPosted ? 'Super Admin' : 'Recruiter');
+
     return {
       id: job._id || job.id,
       title: job.title || '',
@@ -111,14 +328,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
       organizationSize: job.organizationSize || job.company?.organizationSize || '',
       companyAddress: job.companyAddress || job.company?.address || {},
       companyImages: Array.isArray(job.companyImages) ? job.companyImages : [],
-      location: job.locationDisplay || job.location?.city || '',
+      location: locationDisplay,
       locationDetails: job.location && typeof job.location === 'object' ? job.location : {},
       workMode: job.workMode || 'On-site',
       jobType: job.jobType || 'Full-Time',
       department: job.department || '',
       role: job.role || '',
       qualification: job.qualification || '',
-      salaryRange: job.salaryRange || 'Not Disclosed',
+      salaryRange: salaryRange,
       salaryPeriod: job.salary?.period ? `Per ${job.salary.period}` : 'Annual',
       salary: job.salary || {},
       experience: job.experience || {},
@@ -146,12 +363,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
       recruiterMobileNumber: job.recruiterMobileNumber || '',
       recruiterEmail: job.recruiterEmail || '',
       recruiterId: job.recruiterId,
-      // ✅ NEW Poster Metadata
-      postedBy: job.postedBy || 'recruiter',
+      postedBy: resolvedPostedBy as any,
       postedByUserId: job.postedByUserId || '',
-      postedByName: job.postedByName || '',
-      postedByEmail: job.postedByEmail || '',
-      postedByRole: job.postedByRole || '',
+      postedByName: resolvedPostedByName,
+      postedByEmail: resolvedPostedByEmail,
+      postedByRole: resolvedPostedByRole,
+      isAdminPosted,
       applicationUrl: job.applicationUrl || '',
       noPaymentInvolved: job.noPaymentInvolved,
       postedDate: job.postedDate || '',
@@ -161,7 +378,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
       rejectionReason: job.rejectionReason || '',
       whatsapp: whatsappData || job.whatsapp || { enabled: false },
       notes: job.notes || '',
-    };
+    } as JobItem;
   }, []);
 
   const fetchJobs = useCallback(async () => {
@@ -193,6 +410,10 @@ export const JobsView: React.FC<JobsViewProps> = ({
         queryParams.featured = true;
       }
 
+      Object.keys(queryParams).forEach((k) => {
+        if (queryParams[k] === undefined || queryParams[k] === '') delete queryParams[k];
+      });
+
       const response = await jobApi.getJobs(queryParams);
 
       if (response.success && response.data) {
@@ -200,9 +421,30 @@ export const JobsView: React.FC<JobsViewProps> = ({
           .map((j: any) => transformJob(j))
           .filter((j: JobItem) => !deletedIdsRef.current.has(j.id));
 
+        console.log('[JobsView] ═══════════ FETCH DEBUG ═══════════');
+        console.log('[JobsView] Filter:', postedByFilter, '| Tab:', activeTab);
+        console.log('[JobsView] Total jobs returned:', transformedJobs.length);
+        console.log('[JobsView] Admin in list:', transformedJobs.filter((j) => (j as any).postedBy === 'admin').length);
+        console.log('[JobsView] Recruiter in list:', transformedJobs.filter((j) => (j as any).postedBy === 'recruiter').length);
+        console.log('[JobsView] Backend counts:', response.counts);
+        console.log('[JobsView] ═════════════════════════════════════');
+
         setApiJobs(transformedJobs);
-        if (response.counts) setCounts({ ...counts, ...response.counts });
-        if (response.pagination) setPagination((prev) => ({ ...prev, ...response.pagination }));
+
+        if (response.counts) {
+          setCounts((prev) => ({ ...prev, ...response.counts }));
+        }
+
+        if (response.pagination) {
+          setPagination((prev) => ({
+            page: response.pagination.page || prev.page,
+            limit: response.pagination.limit || prev.limit,
+            total: response.pagination.total ?? response.pagination.totalItems ?? transformedJobs.length,
+            pages: response.pagination.pages ?? response.pagination.totalPages ?? 1,
+          }));
+        } else {
+          setPagination((prev) => ({ ...prev, total: transformedJobs.length, pages: 1 }));
+        }
       }
     } catch (err: any) {
       console.error('Failed to fetch jobs:', err.message);
@@ -215,6 +457,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
+
+  // ✅ FIX: Reset page to 1 whenever filters change (prevents stuck on empty page 5)
+  useEffect(() => {
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+    // Scroll to top on filter change
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, postedByFilter, jobTypeFilter, workModeFilter, searchQuery]);
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -342,6 +592,47 @@ export const JobsView: React.FC<JobsViewProps> = ({
     }
   };
 
+  // ✅ FIX: Export with current filters + loading state
+  const handleExportClick = useCallback(async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const statusMap: Record<string, string> = {
+        'All jobs': '',
+        Live: 'Live',
+        Feature: '',
+        Drafts: 'Draft',
+        Pending: 'Pending Approval',
+        Approved: 'Live',
+        Rejected: 'Rejected',
+        Closed: 'Closed',
+      };
+
+      const filters: Record<string, any> = {
+        status: statusMap[activeTab] || '',
+        search: searchQuery || '',
+        jobType: jobTypeFilter !== 'All' ? jobTypeFilter : '',
+        workMode: workModeFilter !== 'All' ? workModeFilter : '',
+        postedBy: postedByFilter !== 'All' ? postedByFilter : '',
+      };
+      if (activeTab === 'Feature') filters.featured = 'true';
+
+      // Strip empties
+      Object.keys(filters).forEach((k) => {
+        if (!filters[k]) delete filters[k];
+      });
+
+      // Call parent — parent will invoke jobApi.exportJobs
+      await onExport(filters);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      showToast(err?.message || 'Export failed', 'error');
+    } finally {
+      // Keep spinner for ~500ms for visual feedback
+      setTimeout(() => setIsExporting(false), 500);
+    }
+  }, [activeTab, searchQuery, jobTypeFilter, workModeFilter, postedByFilter, onExport, isExporting, showToast]);
+
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
       if (activeTab === 'Pending' && job.status !== 'Pending Approval') return false;
@@ -352,7 +643,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
       if (activeTab === 'Drafts' && job.status !== 'Draft') return false;
       if (activeTab === 'Feature' && !job.featured) return false;
 
-      if (postedByFilter !== 'All' && job.postedBy !== postedByFilter) return false;
+      // ✅ Use helper for consistent detection on client-side filter too
+      if (postedByFilter !== 'All') {
+        const jobIsAdmin = detectIsAdminJob(job);
+        if (postedByFilter === 'admin' && !jobIsAdmin) return false;
+        if (postedByFilter === 'recruiter' && jobIsAdmin) return false;
+      }
 
       if (
         searchQuery &&
@@ -416,37 +712,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
       <span className={`inline-flex items-center gap-1 rounded font-bold whitespace-nowrap ${isSmall ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-[11px]'} bg-[#EAE8F4] text-[#6750A4] border border-[#6750A4]/20`}>
         <span className={`material-symbols-outlined ${isSmall ? 'text-[11px]' : 'text-[13px]'}`}>schedule</span>
         <span>{notice}</span>
-      </span>
-    );
-  };
-
-  // ─── POSTED BY META BADGE (Admin OR Recruiter with details) ───
-  const PostedByMeta = ({ job }: { job: JobItem }) => {
-    const isAdmin = job.postedBy === 'admin';
-    const posterName = job.postedByName || (job.recruiterId && typeof job.recruiterId === 'object' ? (job.recruiterId as any).name : '') || 'Unknown';
-    const posterEmail = job.postedByEmail || (job.recruiterId && typeof job.recruiterId === 'object' ? (job.recruiterId as any).email : '') || '';
-
-    if (isAdmin) {
-      return (
-        <span
-          className="inline-flex items-center gap-1 text-[10px] text-blue-900 bg-blue-50 border border-blue-300 px-1.5 py-0.5 rounded-md font-extrabold cursor-help"
-          title={`Posted via Admin Portal\nName: ${posterName}\nEmail: ${posterEmail}`}
-        >
-          <span className="material-symbols-outlined text-[12px] text-blue-700">verified_user</span>
-          <span>ADMIN POST</span>
-          <span className="font-normal text-[9px] text-blue-700">({posterName.split(' ')[0]})</span>
-        </span>
-      );
-    }
-
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[10px] text-amber-900 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded-md font-extrabold cursor-help"
-        title={`Posted by External Recruiter\nName: ${posterName}\nEmail: ${posterEmail}`}
-      >
-        <span className="material-symbols-outlined text-[12px] text-amber-700">badge</span>
-        <span>RECRUITER</span>
-        <span className="font-normal text-[9px] text-amber-700">({posterName.split(' ')[0] || 'User'})</span>
       </span>
     );
   };
@@ -538,9 +803,26 @@ export const JobsView: React.FC<JobsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <button onClick={onExport} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-label-md hover:bg-surface-container shadow-xs transition-colors cursor-pointer text-sm">
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            <span className="hidden sm:inline">Export</span>
+          {/* ✅ FIX: Export with loading spinner + current filters */}
+          <button
+            onClick={handleExportClick}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-label-md hover:bg-surface-container shadow-xs transition-colors cursor-pointer text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            title={`Export ${postedByFilter !== 'All' ? postedByFilter + ' ' : ''}jobs as CSV`}
+          >
+            {isExporting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <span className="hidden sm:inline">Exporting...</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style={{ flexShrink: 0 }}>
+                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                </svg>
+                <span className="hidden sm:inline">Export CSV</span>
+              </>
+            )}
           </button>
           <button onClick={onOpenPostJob} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary font-bold shadow-md hover:bg-primary-container transition-all cursor-pointer text-sm active:scale-95">
             <span className="material-symbols-outlined text-[18px]">add</span>
@@ -552,31 +834,83 @@ export const JobsView: React.FC<JobsViewProps> = ({
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         {[
-          { label: 'Total Jobs', value: counts.total, icon: 'list_alt' },
-          { label: 'Live', value: counts.live, icon: 'check_circle', filter: 'Live' },
-          { label: 'Pending', value: counts.pending, icon: 'pending', filter: 'Pending' },
-          { label: 'Rejected', value: counts.rejected, icon: 'block', filter: 'Rejected' },
-          { label: 'Admin Posted', value: counts.adminPosted, icon: 'verified_user', postedFilter: 'admin' },
-          { label: 'Recruiter Posted', value: counts.recruiterPosted, icon: 'badge', postedFilter: 'recruiter' },
+          { label: 'Total Jobs', value: counts.total, icon: 'list_alt', color: '' },
+          { label: 'Live', value: counts.live, icon: 'check_circle', filter: 'Live', color: '' },
+          { label: 'Pending', value: counts.pending, icon: 'pending', filter: 'Pending', color: '' },
+          { label: 'Rejected', value: counts.rejected, icon: 'block', filter: 'Rejected', color: '' },
+          { label: 'Admin Jobs', value: counts.adminPosted, icon: 'shield_person', postedFilter: 'admin', color: 'border-blue-300 bg-blue-50/60' },
+          { label: 'Recruiter Jobs', value: counts.recruiterPosted, icon: 'badge', postedFilter: 'recruiter', color: 'border-amber-300 bg-amber-50/60' },
         ].map((kpi: any) => (
           <div
             key={kpi.label}
             onClick={() => {
-              if (kpi.filter) setActiveTab(kpi.filter as any);
-              if (kpi.postedFilter) setPostedByFilter(kpi.postedFilter as any);
+              // ✅ FIX: Properly reset BOTH tab AND filter when clicking KPIs
+              if (kpi.filter) {
+                setActiveTab(kpi.filter as any);
+                setPostedByFilter('All');
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }
+              if (kpi.postedFilter) {
+                setPostedByFilter(kpi.postedFilter as any);
+                setActiveTab('All jobs');
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }
             }}
-            className={`bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-variant shadow-xs transition-all ${(kpi.filter || kpi.postedFilter) ? 'cursor-pointer hover:border-primary hover:shadow-md' : ''}`}
+            className={`p-3 sm:p-4 rounded-xl border shadow-xs transition-all ${(kpi.filter || kpi.postedFilter) ? 'cursor-pointer hover:border-primary hover:shadow-md' : ''} ${kpi.color || 'bg-surface-container-lowest border-surface-variant'} ${
+              (kpi.postedFilter && postedByFilter === kpi.postedFilter) ? 'ring-2 ring-primary' : ''
+            }`}
           >
             <div className="flex items-center justify-between">
               <span className="font-label-md text-outline text-[11px] sm:text-xs">{kpi.label}</span>
-              <span className="p-1 sm:p-1.5 rounded-lg bg-surface-container">
-                <span className="material-symbols-outlined text-[14px] sm:text-[16px]">{kpi.icon}</span>
+              <span
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: '8px',
+                  background: kpi.postedFilter === 'admin' ? '#dbeafe' : kpi.postedFilter === 'recruiter' ? '#fef3c7' : '#f3f4f6',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {kpi.postedFilter === 'admin'
+                  ? <AdminShieldIcon size={14} color="#1d4ed8" />
+                  : kpi.postedFilter === 'recruiter'
+                    ? <RecruiterBadgeIcon size={14} color="#b45309" />
+                    : <span className="material-symbols-outlined text-[14px] sm:text-[16px]">{kpi.icon}</span>}
               </span>
             </div>
-            <h3 className="text-xl sm:text-2xl text-primary font-bold tracking-tight mt-1 sm:mt-2">{kpi.value.toLocaleString()}</h3>
+            <h3 className="text-xl sm:text-2xl text-primary font-bold tracking-tight mt-1 sm:mt-2">{(kpi.value || 0).toLocaleString()}</h3>
           </div>
         ))}
       </div>
+
+      {/* Active Source Filter Banner */}
+      {postedByFilter !== 'All' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            borderRadius: '12px',
+            border: '1px solid',
+            fontSize: '14px',
+            fontWeight: 600,
+            background: postedByFilter === 'admin' ? '#eff6ff' : '#fffbeb',
+            borderColor: postedByFilter === 'admin' ? '#93c5fd' : '#fcd34d',
+            color: postedByFilter === 'admin' ? '#1e3a8a' : '#78350f',
+          }}
+        >
+          {postedByFilter === 'admin' ? <AdminShieldIcon size={16} color="#1d4ed8" /> : <RecruiterBadgeIcon size={16} color="#b45309" />}
+          <span>Showing only <strong>{postedByFilter === 'admin' ? 'Admin' : 'Recruiter'}</strong> posted jobs ({postedByFilter === 'admin' ? counts.adminPosted : counts.recruiterPosted} total)</span>
+          <button
+            onClick={() => setPostedByFilter('All')}
+            style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', color: 'inherit' }}
+          >
+            Clear Filter
+          </button>
+        </div>
+      )}
 
       {/* Tabs list */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 border-b border-surface-variant scrollbar-hide">
@@ -598,19 +932,24 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs flex-wrap">
-            {/* ✅ NEW: Posted-By Filter */}
             <select
               value={postedByFilter}
               onChange={(e) => setPostedByFilter(e.target.value as any)}
-              className={`px-2.5 py-2 rounded-lg border focus:outline-none text-xs font-bold ${
-                postedByFilter === 'admin' ? 'bg-blue-50 text-blue-900 border-blue-300' :
-                postedByFilter === 'recruiter' ? 'bg-amber-50 text-amber-900 border-amber-300' :
-                'bg-surface-container-low text-on-surface border-outline-variant'
-              }`}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: '1px solid',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                background: postedByFilter === 'admin' ? '#eff6ff' : postedByFilter === 'recruiter' ? '#fffbeb' : '#ffffff',
+                borderColor: postedByFilter === 'admin' ? '#60a5fa' : postedByFilter === 'recruiter' ? '#fbbf24' : '#d1d5db',
+                color: postedByFilter === 'admin' ? '#1e3a8a' : postedByFilter === 'recruiter' ? '#78350f' : '#111827',
+              }}
             >
               <option value="All">📋 Source: All</option>
-              <option value="admin">🛡️ Admin Posted</option>
-              <option value="recruiter">👤 Recruiter Posted</option>
+              <option value="admin">🛡️ Admin Jobs</option>
+              <option value="recruiter">👤 Recruiter Jobs</option>
             </select>
 
             <select value={jobTypeFilter} onChange={(e) => setJobTypeFilter(e.target.value)} className="px-2.5 py-2 rounded-lg bg-surface-container-low text-on-surface border border-outline-variant focus:outline-none text-xs">
@@ -665,11 +1004,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
           <div className="divide-y divide-surface-variant/50">
             {filteredJobs.map((job) => {
               const isBeingDeleted = deletingIds.has(job.id);
+              // ✅ Use helper for consistent admin detection
+              const isAdmin = detectIsAdminJob(job);
 
               return (
                 <div
                   key={job.id}
-                  className={`group transition-all duration-300 hover:bg-surface-container-low/40 ${job.featured ? 'bg-[#C58A3A]/[0.03]' : ''} ${job.postedBy === 'admin' ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-amber-500'}`}
+                  className={`group transition-all duration-300 hover:bg-surface-container-low/40 ${job.featured ? 'bg-[#C58A3A]/[0.03]' : ''}`}
                   style={{
                     opacity: isBeingDeleted ? 0 : 1,
                     transform: isBeingDeleted ? 'translateX(-20px) scale(0.98)' : 'translateX(0) scale(1)',
@@ -677,13 +1018,34 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     overflow: 'hidden',
                     pointerEvents: isBeingDeleted ? 'none' : 'auto',
                     transition: 'opacity 0.25s ease-out, transform 0.25s ease-out, max-height 0.25s ease-out',
+                    borderLeft: `5px solid ${isAdmin ? '#3b82f6' : '#f59e0b'}`,
                   }}
                 >
                   {/* ========== DESKTOP ROW ========== */}
                   <div className="hidden lg:grid lg:grid-cols-[minmax(0,2.5fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_100px_100px_minmax(0,1.2fr)] gap-4 px-5 py-3.5 items-center">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
-                        {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
+                      <div className="relative shrink-0">
+                        <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm overflow-hidden">
+                          {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
+                        </div>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '-4px',
+                            right: '-4px',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            border: '2px solid white',
+                            background: isAdmin ? '#3b82f6' : '#f59e0b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }}
+                        >
+                          {isAdmin ? <AdminShieldIcon size={8} /> : <RecruiterBadgeIcon size={8} />}
+                        </span>
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
@@ -695,7 +1057,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           <span className="text-xs text-on-surface-variant truncate">{job.company}</span>
                           {job.isCompanyVerified && (<span className="material-symbols-outlined text-[12px] text-[#5F8A72] shrink-0">verified</span>)}
                         </div>
-                        <div className="mt-1"><PostedByMeta job={job} /></div>
+                        <div style={{ marginTop: '6px', display: 'block', overflow: 'visible' }}>
+                          <PostedByTag job={job} />
+                        </div>
                         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           {job.isNew && (<span className="px-1.5 py-0.5 rounded bg-primary-container text-on-secondary font-bold text-[9px] leading-none">NEW</span>)}
                           <span className="text-[10px] text-outline">{job.jobType}</span>
@@ -769,8 +1133,27 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   {/* ========== TABLET ROW ========== */}
                   <div className="hidden md:block lg:hidden px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-11 h-11 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-sm shadow-sm shrink-0 overflow-hidden">
-                        {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
+                      <div className="relative shrink-0">
+                        <div className="w-11 h-11 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
+                          {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
+                        </div>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '-4px',
+                            right: '-4px',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            border: '2px solid white',
+                            background: isAdmin ? '#3b82f6' : '#f59e0b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {isAdmin ? <AdminShieldIcon size={8} /> : <RecruiterBadgeIcon size={8} />}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
@@ -788,7 +1171,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           </div>
                           <StatusBadge status={job.status} />
                         </div>
-                        <div className="mt-1.5"><PostedByMeta job={job} /></div>
+                        <div style={{ marginTop: '6px', display: 'block', overflow: 'visible' }}>
+                          <PostedByTag job={job} />
+                        </div>
 
                         <div className="grid grid-cols-3 gap-3 mt-3">
                           <div>
@@ -850,8 +1235,27 @@ export const JobsView: React.FC<JobsViewProps> = ({
                   {/* ========== MOBILE ROW ========== */}
                   <div className="md:hidden px-3 py-3">
                     <div className="flex items-start gap-2.5">
-                      <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm shrink-0 overflow-hidden">
-                        {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
+                      <div className="relative shrink-0">
+                        <div className="w-10 h-10 rounded-lg bg-primary-container text-on-secondary flex items-center justify-center font-bold text-xs shadow-sm overflow-hidden">
+                          {job.companyLogo ? (<img src={job.companyLogo} alt={job.company} className="w-full h-full object-cover" />) : (job.companyInitials)}
+                        </div>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '-4px',
+                            right: '-4px',
+                            width: '14px',
+                            height: '14px',
+                            borderRadius: '50%',
+                            border: '2px solid white',
+                            background: isAdmin ? '#3b82f6' : '#f59e0b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {isAdmin ? <AdminShieldIcon size={7} /> : <RecruiterBadgeIcon size={7} />}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
@@ -868,7 +1272,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
                           </div>
                           <StatusBadge status={job.status} />
                         </div>
-                        <div className="mt-1"><PostedByMeta job={job} /></div>
+                        <div style={{ marginTop: '4px', display: 'block', overflow: 'visible' }}>
+                          <PostedByTag job={job} compact />
+                        </div>
 
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-[11px]">
                           <span className="flex items-center gap-1 text-on-surface-variant">
@@ -923,11 +1329,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
       {/* Pagination */}
       {filteredJobs.length > 0 && (
         <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-variant flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-outline">
-          <div>Showing {filteredJobs.length} of {pagination.total} results</div>
+          <div>Showing {filteredJobs.length} of {pagination.total || filteredJobs.length} results</div>
           <div className="flex items-center gap-1">
             <button onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={pagination.page === 1} className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs">Previous</button>
             <span className="px-3 py-1.5 rounded bg-primary text-on-primary font-bold text-xs">{pagination.page}</span>
-            <button onClick={() => setPagination((prev) => ({ ...prev, page: Math.min(prev.pages, prev.page + 1) }))} disabled={pagination.page >= pagination.pages} className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs">Next</button>
+            <button onClick={() => setPagination((prev) => ({ ...prev, page: Math.min(prev.pages || 1, prev.page + 1) }))} disabled={pagination.page >= (pagination.pages || 1)} className="px-2.5 py-1.5 rounded border border-outline-variant bg-surface-container-lowest text-outline hover:text-on-surface cursor-pointer disabled:opacity-40 text-xs">Next</button>
           </div>
         </div>
       )}
