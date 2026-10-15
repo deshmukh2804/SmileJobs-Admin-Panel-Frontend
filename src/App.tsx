@@ -18,7 +18,7 @@ import { CandidatesView } from './views/CandidatesView';
 import { RecruitersView } from './views/RecruitersView';
 import { VerificationView } from './views/VerificationView';
 import { ApplicationsView } from './views/ApplicationsView';
-import { ApplicationHierarchyView } from './views/applicationHierarchyView';
+import { ApplicationHierarchyView } from './views/ApplicationHierarchyView'; // ✅ FIXED: capital 'A'
 import { ActivityLogView } from './views/ActivityLogView';
 import { RolesPermissionsView } from './views/RolesPermissionsView';
 import { BottomNavConfigView } from './views/BottomNavConfigView';
