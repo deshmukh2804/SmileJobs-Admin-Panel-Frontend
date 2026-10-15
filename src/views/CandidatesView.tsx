@@ -30,8 +30,6 @@ interface CandidateItem {
   collegeName?: string;
   endYear?: string;
   certifications?: any[];
-  resumeUrl?: string;
-  resumeFileName?: string;
   isActive?: boolean;
   isVerified?: boolean;
   isEmailVerified?: boolean;
@@ -517,31 +515,6 @@ export const CandidatesView: React.FC = () => {
                         {selectedUser.knownLanguages.map((l, i) => (
                           <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{l}</span>
                         ))}
-                      </div>
-                    </SectionCard>
-                  )}
-
-                  {/* Resume */}
-                  {selectedUser.resumeUrl && (
-                    <SectionCard title="Resume Document" icon="picture_as_pdf">
-                      <div className="flex items-center justify-between gap-2 bg-red-50/50 border border-red-100 rounded-lg p-2.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-9 h-9 rounded bg-red-100 flex items-center justify-center shrink-0">
-                            <span className="material-symbols-outlined text-red-600 text-[18px]">picture_as_pdf</span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{selectedUser.resumeFileName || 'Resume.pdf'}</p>
-                            <p className="text-[9px] text-outline">PDF Document</p>
-                          </div>
-                        </div>
-                        <a
-                          href={selectedUser.resumeUrl}
-                          target="_blank" rel="noopener noreferrer"
-                          className="px-2.5 py-1 rounded bg-primary text-on-primary text-[10px] font-medium hover:opacity-90 flex items-center gap-1 shrink-0"
-                        >
-                          <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-                          View
-                        </a>
                       </div>
                     </SectionCard>
                   )}

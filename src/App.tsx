@@ -1,6 +1,5 @@
 // FILE: frontend/src/App.tsx
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { CommandPalette } from './components/CommandPalette';
@@ -19,7 +18,7 @@ import { CandidatesView } from './views/CandidatesView';
 import { RecruitersView } from './views/RecruitersView';
 import { VerificationView } from './views/VerificationView';
 import { ApplicationsView } from './views/ApplicationsView';
-import { ApplicationHierarchyView } from './views/ApplicationHierarchyView';
+import { ApplicationHierarchyView } from './views/applicationHierarchyView';
 import { ActivityLogView } from './views/ActivityLogView';
 import { RolesPermissionsView } from './views/RolesPermissionsView';
 import { BottomNavConfigView } from './views/BottomNavConfigView';
@@ -70,37 +69,6 @@ const ADMIN_ROLES = ['admin', 'super admin', 'superadmin', 'sub admin', 'subadmi
 const ADMIN_NAMES = ['smile jobs', 'smilejobs', 'admin'];
 const RECRUITER_ROLES = ['recruiter', 'employer', 'hr'];
 
-// ✅ Map NavItem IDs to URL paths
-const TAB_TO_PATH: Record<string, string> = {
-  'dashboard': '/dashboard',
-  'job-approvals': '/job-approvals',
-  'jobs': '/jobs',
-  'candidates': '/candidates',
-  'recruiters': '/recruiters',
-  'verification': '/verification',
-  'applications': '/applications',
-  'application-hierarchy': '/application-hierarchy',
-  'admin-activity-log': '/admin-activity-log',
-  'roles-and-permissions': '/roles-and-permissions',
-  'bottom-nav-config': '/bottom-nav-config',
-  'notifications': '/notifications',
-  'payments-and-billing': '/payments-and-billing',
-  'manage-subscriptions': '/manage-subscriptions',
-  'admin-jobs': '/admin-jobs',
-  'candidate-profile-pricing': '/candidate-profile-pricing',
-  'payment-dashboard': '/payment-dashboard',
-  'banners': '/banners',
-  'reports-and-complaints': '/reports-and-complaints',
-  'content-management': '/content-management',
-  'platform-settings': '/platform-settings',
-  'resumes-and-profiles': '/resumes-and-profiles',
-};
-
-const PATH_TO_TAB: Record<string, string> = Object.entries(TAB_TO_PATH).reduce(
-  (acc, [tab, path]) => ({ ...acc, [path]: tab }),
-  {}
-);
-
 const detectIsAdminJob = (job: any): boolean => {
   if (!job) return false;
   if (typeof job.isAdminPosted === 'boolean') return job.isAdminPosted;
@@ -121,34 +89,17 @@ const detectIsAdminJob = (job: any): boolean => {
 };
 
 export default function App() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
+  const [currentTab, setCurrentTab] = useState<any>('dashboard');
 
-  // ✅ NEW: Track session restore state to prevent LoginView flash
+  // ✅ FIX: Track whether session restoration is in-progress on page refresh.
+  // Initialize to TRUE if a token exists in localStorage — so we show a loader
+  // instead of flashing the login screen while /me is being validated.
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(() => {
-    // Initial state: true if token exists (we need to restore), false otherwise
-    const hasToken = localStorage.getItem('token') || localStorage.getItem('adminToken');
-    const hasInfo = localStorage.getItem('adminInfo');
-    return !!(hasToken && hasInfo);
+    const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
+    const storedInfo = localStorage.getItem('adminInfo');
+    return !!(token && storedInfo);
   });
-
-  // ✅ Derive currentTab from URL
-  const currentTab: NavItem = useMemo(() => {
-    const path = location.pathname;
-    const tab = PATH_TO_TAB[path];
-    return (tab || 'dashboard') as NavItem;
-  }, [location.pathname]);
-
-  // ✅ Helper to navigate to a tab (updates URL)
-  const setCurrentTab = useCallback(
-    (tab: NavItem | string) => {
-      const path = TAB_TO_PATH[tab as string] || `/${tab}`;
-      navigate(path);
-    },
-    [navigate]
-  );
 
   const [jobs, setJobs] = useState<JobItem[]>(INITIAL_JOBS);
   const [users, setUsers] = useState<UserItem[]>(INITIAL_USERS);
@@ -169,6 +120,11 @@ export default function App() {
   const [sidebarCounts, setSidebarCounts] = useState<SidebarCounts>(INITIAL_SIDEBAR_COUNTS);
 
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'error' } | null>(null);
+
+  // ── Refs to break infinite loops ──
+  const redirectGuardRef = useRef<string | null>(null);
+  const sseErrorCheckRef = useRef<boolean>(false);
+  const sessionRestoredRef = useRef<boolean>(false);
 
   const showToast = useCallback(
     (message: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -193,14 +149,15 @@ export default function App() {
       } catch {}
 
       setCurrentUser(null);
-      setIsRestoringSession(false);
-      navigate('/login');
+      setCurrentTab('dashboard');
       setPostJobMode('closed');
       setEditingJobId(null);
       setSidebarCounts(INITIAL_SIDEBAR_COUNTS);
+      redirectGuardRef.current = null;
+      sessionRestoredRef.current = false;
       showToast(reason || 'Your account has been deleted or deactivated.', 'error');
     },
-    [showToast, navigate]
+    [showToast]
   );
 
   useEffect(() => {
@@ -210,6 +167,8 @@ export default function App() {
     if (!token) return;
 
     let eventSource: EventSource | null = null;
+    sseErrorCheckRef.current = false;
+
     try {
       eventSource = new EventSource(`${API_BASE_URL}/auth/stream?token=${encodeURIComponent(token)}`);
 
@@ -224,14 +183,22 @@ export default function App() {
       };
 
       eventSource.onerror = () => {
-        adminApi
-          .getMe()
-          .then((res) => {
-            if (!res.success || !res.admin || res.admin.isActive === false) {
-              handleForceLogout('Your account is no longer valid.');
-            }
-          })
-          .catch(() => {});
+        if (eventSource?.readyState === EventSource.CLOSED) {
+          if (sseErrorCheckRef.current) return;
+          sseErrorCheckRef.current = true;
+
+          adminApi
+            .getMe()
+            .then((res) => {
+              if (!res.success || !res.admin || res.admin.isActive === false) {
+                handleForceLogout('Your account is no longer valid.');
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              sseErrorCheckRef.current = false;
+            });
+        }
       };
     } catch {}
 
@@ -432,14 +399,20 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, refreshSidebarCounts]);
 
-  // ✅ UPDATED: Session restore now preserves current URL (no forced redirect)
+  // ── FIX: Session restoration on page refresh. ──
+  // We only mark session as "restored" AFTER /me completes (success or failure).
+  // During the in-flight period, isRestoringSession stays true and the UI
+  // shows a loader instead of flashing to the login page.
   useEffect(() => {
+    if (sessionRestoredRef.current) return;
+
     const restoreSession = async () => {
       const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
       const storedInfo = localStorage.getItem('adminInfo');
 
       if (!token || !storedInfo) {
         setIsRestoringSession(false);
+        sessionRestoredRef.current = true;
         return;
       }
 
@@ -462,33 +435,30 @@ export default function App() {
           };
 
           setCurrentUser(restoredUser);
-
-          // ✅ ONLY redirect if user is on root or login page
-          // Otherwise, PRESERVE their current URL (e.g., /jobs, /candidates, etc.)
-          if (location.pathname === '/' || location.pathname === '/login') {
-            const landing = res.admin.landingPage || ROLE_DEFAULT_TABS[res.admin.role] || 'dashboard';
-            navigate(TAB_TO_PATH[landing] || '/dashboard', { replace: true });
-          }
-          // ✅ Otherwise user stays on current page (e.g., /jobs stays /jobs)
+          setCurrentTab(res.admin.landingPage || ROLE_DEFAULT_TABS[res.admin.role] || 'dashboard');
+          sessionRestoredRef.current = true;
         } else {
           localStorage.removeItem('token');
           localStorage.removeItem('adminToken');
           localStorage.removeItem('adminInfo');
+          sessionRestoredRef.current = true;
         }
       } catch {
         localStorage.removeItem('token');
         localStorage.removeItem('adminToken');
         localStorage.removeItem('adminInfo');
+        sessionRestoredRef.current = true;
       } finally {
-        // ✅ Always mark restoration as complete
         setIsRestoringSession(false);
       }
     };
     restoreSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLoginSuccess = async (user: AdminUser, selectedRole?: string) => {
+    sessionRestoredRef.current = true;
+    redirectGuardRef.current = null;
+
     try {
       const meRes = await adminApi.getMe();
       if (meRes.success && meRes.admin) {
@@ -515,7 +485,7 @@ export default function App() {
           (fullUser.permissions && fullUser.permissions.length > 0
             ? fullUser.permissions[0]
             : ROLE_DEFAULT_TABS[activeRole] || 'dashboard');
-        navigate(TAB_TO_PATH[landing as string] || '/dashboard');
+        setCurrentTab(landing as NavItem);
         showToast(`Signed in as ${fullUser.name} (${activeRole})`, 'success');
         return;
       }
@@ -531,16 +501,17 @@ export default function App() {
       landingPage: user.landingPage || 'dashboard',
     };
     setCurrentUser(fallbackUser);
-    navigate(TAB_TO_PATH[fallbackUser.landingPage as string] || '/dashboard');
+    setCurrentTab((fallbackUser.landingPage as NavItem) || 'dashboard');
     showToast(`Signed in as ${user.name} (${activeRole})`, 'success');
   };
 
   const handleSelectRole = (newRole: string) => {
     if (!currentUser) return;
+    redirectGuardRef.current = null;
     const updatedUser: AdminUser = { ...currentUser, activeRole: newRole };
     setCurrentUser(updatedUser);
     const defaultLanding = ROLE_DEFAULT_TABS[newRole] || 'dashboard';
-    navigate(TAB_TO_PATH[defaultLanding] || '/dashboard');
+    setCurrentTab(defaultLanding);
     showToast(`Persona switched to ${newRole}.`, 'info');
   };
 
@@ -549,25 +520,26 @@ export default function App() {
       await adminApi.logout();
     } catch {}
     setCurrentUser(null);
-    setIsRestoringSession(false);
-    navigate('/login');
+    setCurrentTab('dashboard');
     setPostJobMode('closed');
     setEditingJobId(null);
     setSidebarCounts(INITIAL_SIDEBAR_COUNTS);
+    redirectGuardRef.current = null;
+    sessionRestoredRef.current = false;
     showToast('Signed out of administrative console.', 'info');
   };
 
   const handleOpenCreateJob = () => {
     setEditingJobId(null);
     setPostJobMode('create');
-    navigate('/jobs');
+    setCurrentTab('jobs');
     setPostJobFormKey((k) => k + 1);
   };
 
   const handleEditJob = (jobId: string) => {
     setEditingJobId(jobId);
     setPostJobMode('edit');
-    navigate('/jobs');
+    setCurrentTab('jobs');
     setPostJobFormKey((k) => k + 1);
   };
 
@@ -654,7 +626,7 @@ export default function App() {
 
   const handleSaveUser = (newUser: UserItem) => {
     setUsers((prev) => [newUser, ...prev]);
-    navigate('/candidates');
+    setCurrentTab('candidates');
     showToast(`Created new ${newUser.role} account for ${newUser.name}!`);
     refreshSidebarCounts();
   };
@@ -720,56 +692,48 @@ export default function App() {
   }, [permittedTabs, currentTab, currentUser]);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      redirectGuardRef.current = null;
+      return;
+    }
     if (permittedTabs.length === 0) return;
-    if (isTabPermitted) return;
+    if (isTabPermitted) {
+      redirectGuardRef.current = null;
+      return;
+    }
 
     const landing =
-      currentUser.landingPage && permittedTabs.includes(currentUser.landingPage)
+      currentUser.landingPage && permittedTabs.includes(currentUser.landingPage as any)
         ? currentUser.landingPage
         : permittedTabs[0];
 
-    console.warn(
-      `⛔ Tab "${currentTab}" not permitted for "${currentUser.activeRole}". Redirecting to "${landing}"`
-    );
-    navigate(TAB_TO_PATH[landing as string] || '/dashboard');
-  }, [currentUser, currentTab, isTabPermitted, permittedTabs, navigate]);
+    const landingStr = String(landing);
 
-  // ✅ Close post-job overlay when leaving /jobs route
-  useEffect(() => {
-    if (location.pathname !== '/jobs' && postJobMode !== 'closed') {
-      setPostJobMode('closed');
-      setEditingJobId(null);
+    if (redirectGuardRef.current === landingStr) {
+      return;
     }
-  }, [location.pathname, postJobMode]);
 
-  // ✅ NEW: Show loading screen while session is being restored
-  // This prevents LoginView from flashing & redirecting away from current URL
+    redirectGuardRef.current = landingStr;
+
+    console.warn(
+      `⛔ Tab "${currentTab}" not permitted for "${currentUser.activeRole}". Redirecting to "${landingStr}"`
+    );
+    setCurrentTab(landing);
+  }, [currentUser, currentTab, isTabPermitted, permittedTabs]);
+
+  // ✅ FIX: Show a full-screen loader while restoring the session on page refresh.
+  // This prevents the brief flash of the login screen before /me resolves.
   if (isRestoringSession) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-white border border-surface-variant flex items-center justify-center shadow-lg overflow-hidden">
-            <img
-              src="/src/assets/smilejobs.png"
-              alt="Smile Jobs"
-              className="w-14 h-14 object-contain p-1"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          </div>
-          <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-          <div className="text-center">
-            <p className="text-sm text-on-surface font-semibold">Restoring your session...</p>
-            <p className="text-xs text-outline mt-1">Please wait a moment</p>
-          </div>
+        <div className="text-center">
+          <div className="w-12 h-12 border-3 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-outline mt-3 font-medium">Restoring your session...</p>
         </div>
       </div>
     );
   }
 
-  // ✅ Show LoginView only when session restore is complete AND no user
   if (!currentUser) {
     return (
       <>
@@ -779,12 +743,12 @@ export default function App() {
     );
   }
 
-  // ✅ Wrapper for all authenticated routes (keeps Sidebar + Header)
-  const AuthLayout = ({ children }: { children: React.ReactNode }) => (
+  return (
     <div className="min-h-screen bg-background text-on-surface font-sans antialiased">
       <Sidebar
         currentTab={currentTab}
         onSelectTab={(tab) => {
+          redirectGuardRef.current = null;
           setCurrentTab(tab);
           if (tab !== 'jobs') setPostJobMode('closed');
         }}
@@ -806,7 +770,10 @@ export default function App() {
         currentUser={currentUser}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenPostVerify={handleOpenCreateJob}
-        onSelectTab={(tab) => setCurrentTab(tab)}
+        onSelectTab={(tab) => {
+          redirectGuardRef.current = null;
+          setCurrentTab(tab);
+        }}
         onOpenRolePicker={() => setIsRolePickerOpen(true)}
         onLogout={handleLogout}
       />
@@ -817,11 +784,129 @@ export default function App() {
             attemptedTab={currentTab}
             currentRole={currentUser.activeRole}
             userRoles={currentUser.roles}
-            onNavigateAllowed={(tab) => setCurrentTab(tab)}
+            onNavigateAllowed={(tab) => {
+              redirectGuardRef.current = null;
+              setCurrentTab(tab);
+            }}
             onOpenRolePicker={() => setIsRolePickerOpen(true)}
           />
         ) : (
-          children
+          <>
+            {currentTab === 'dashboard' && (
+              <DashboardView
+                jobs={jobs}
+                verifications={verifications}
+                onSelectTab={(tab) => {
+                  redirectGuardRef.current = null;
+                  setCurrentTab(tab);
+                }}
+                onVerifyEntity={(id, name) => handleDashboardVerifyEntity(id, name)}
+                onInspectEntity={(_id) => {
+                  redirectGuardRef.current = null;
+                  setCurrentTab('verification');
+                }}
+                onExportReport={() => handleExportData('Platform_Overview')}
+              />
+            )}
+
+            {currentTab === 'job-approvals' && (
+              <JobApprovalsView
+                onApprove={handleApproveJob}
+                onReject={handleRejectJob}
+                onInspectJob={handleInspectJob}
+                onRefresh={() => {
+                  refreshJobs();
+                  refreshSidebarCounts();
+                }}
+                onToast={showToast}
+              />
+            )}
+
+            {currentTab === 'payments-and-billing' && (
+              <PaymentsBillingView
+                onToast={(msg, type) => showToast(msg, type || 'success')}
+              />
+            )}
+
+            {currentTab === 'manage-subscriptions' && <SubscriptionManagementView />}
+
+            {currentTab === 'candidate-profile-pricing' && <PricingSettingsView />}
+            {currentTab === 'payment-dashboard' && <PaymentDashboardView />}
+
+            {currentTab === 'jobs' &&
+              (postJobMode !== 'closed' ? (
+                <PostJobView
+                  key={`postjob-${postJobMode}-${editingJobId || 'new'}-${postJobFormKey}`}
+                  onClose={handleClosePostJob}
+                  onSuccess={handlePostJobSuccess}
+                  editJobId={postJobMode === 'edit' ? editingJobId : null}
+                />
+              ) : (
+                <JobsView
+                  key={jobsRefreshKey}
+                  jobs={jobs}
+                  onSelectJob={handleInspectJob}
+                  onOpenPostJob={handleOpenCreateJob}
+                  onEditJob={handleEditJob}
+                  onApproveJob={handleApproveJob}
+                  onRejectJob={handleRejectJob}
+                  onDeleteJob={handleDeleteJob}
+                  onToggleFeature={handleToggleJobFeature}
+                  onToggleStatus={handleToggleJobStatus}
+                  onSelectTab={(tab) => {
+                    redirectGuardRef.current = null;
+                    setCurrentTab(tab);
+                  }}
+                  onExport={(filters?: Record<string, any>) => handleExportData('Jobs', filters)}
+                />
+              ))}
+
+            {currentTab === 'candidates' && <CandidatesView />}
+            {currentTab === 'recruiters' && <RecruitersView />}
+
+            {currentTab === 'verification' && (
+              <VerificationView
+                onToast={(msg, type) => {
+                  showToast(msg, type);
+                  refreshSidebarCounts();
+                }}
+              />
+            )}
+
+            {currentTab === 'applications' && <ApplicationsView />}
+            {currentTab === 'application-hierarchy' && <ApplicationHierarchyView />}
+            {currentTab === 'admin-activity-log' && <ActivityLogView />}
+            {currentTab === 'roles-and-permissions' && <RolesPermissionsView />}
+            {currentTab === 'bottom-nav-config' && <BottomNavConfigView />}
+            {currentTab === 'notifications' && <NotificationsView />}
+
+            {currentTab === 'admin-jobs' && <AdminJobsView />}
+
+            {![
+              'dashboard',
+              'job-approvals',
+              'jobs',
+              'candidates',
+              'recruiters',
+              'verification',
+              'applications',
+              'application-hierarchy',
+              'admin-activity-log',
+              'roles-and-permissions',
+              'bottom-nav-config',
+              'notifications',
+              'payments-and-billing',
+              'manage-subscriptions',
+              'admin-jobs',
+              'candidate-profile-pricing',
+              'payment-dashboard',
+            ].includes(currentTab) && (
+              <PlaceholderView tab={currentTab} onSelectTab={(tab) => {
+                redirectGuardRef.current = null;
+                setCurrentTab(tab);
+              }} />
+            )}
+          </>
         )}
       </main>
 
@@ -838,7 +923,10 @@ export default function App() {
         jobs={jobs}
         users={users}
         currentRole={currentUser.activeRole}
-        onSelectTab={(tab) => setCurrentTab(tab)}
+        onSelectTab={(tab) => {
+          redirectGuardRef.current = null;
+          setCurrentTab(tab);
+        }}
         onSelectJob={handleInspectJob}
         onOpenRolePicker={() => setIsRolePickerOpen(true)}
       />
@@ -861,223 +949,5 @@ export default function App() {
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
-  );
-
-  return (
-    <Routes>
-      {/* Redirect root to dashboard */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-
-      <Route
-        path="/dashboard"
-        element={
-          <AuthLayout>
-            <DashboardView
-              jobs={jobs}
-              verifications={verifications}
-              onSelectTab={(tab) => setCurrentTab(tab)}
-              onVerifyEntity={(id, name) => handleDashboardVerifyEntity(id, name)}
-              onInspectEntity={(_id) => {
-                setCurrentTab('verification');
-              }}
-              onExportReport={() => handleExportData('Platform_Overview')}
-            />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/job-approvals"
-        element={
-          <AuthLayout>
-            <JobApprovalsView
-              onApprove={handleApproveJob}
-              onReject={handleRejectJob}
-              onInspectJob={handleInspectJob}
-              onRefresh={() => {
-                refreshJobs();
-                refreshSidebarCounts();
-              }}
-              onToast={showToast}
-            />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/payments-and-billing"
-        element={
-          <AuthLayout>
-            <PaymentsBillingView
-              onToast={(msg, type) => showToast(msg, type || 'success')}
-            />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/manage-subscriptions"
-        element={
-          <AuthLayout>
-            <SubscriptionManagementView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/candidate-profile-pricing"
-        element={
-          <AuthLayout>
-            <PricingSettingsView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/payment-dashboard"
-        element={
-          <AuthLayout>
-            <PaymentDashboardView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/jobs"
-        element={
-          <AuthLayout>
-            {postJobMode !== 'closed' ? (
-              <PostJobView
-                key={`postjob-${postJobMode}-${editingJobId || 'new'}-${postJobFormKey}`}
-                onClose={handleClosePostJob}
-                onSuccess={handlePostJobSuccess}
-                editJobId={postJobMode === 'edit' ? editingJobId : null}
-              />
-            ) : (
-              <JobsView
-                key={jobsRefreshKey}
-                jobs={jobs}
-                onSelectJob={handleInspectJob}
-                onOpenPostJob={handleOpenCreateJob}
-                onEditJob={handleEditJob}
-                onApproveJob={handleApproveJob}
-                onRejectJob={handleRejectJob}
-                onDeleteJob={handleDeleteJob}
-                onToggleFeature={handleToggleJobFeature}
-                onToggleStatus={handleToggleJobStatus}
-                onSelectTab={(tab) => setCurrentTab(tab)}
-                onExport={(filters?: Record<string, any>) => handleExportData('Jobs', filters)}
-              />
-            )}
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/candidates"
-        element={
-          <AuthLayout>
-            <CandidatesView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/recruiters"
-        element={
-          <AuthLayout>
-            <RecruitersView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/verification"
-        element={
-          <AuthLayout>
-            <VerificationView
-              onToast={(msg, type) => {
-                showToast(msg, type);
-                refreshSidebarCounts();
-              }}
-            />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/applications"
-        element={
-          <AuthLayout>
-            <ApplicationsView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/application-hierarchy"
-        element={
-          <AuthLayout>
-            <ApplicationHierarchyView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/admin-activity-log"
-        element={
-          <AuthLayout>
-            <ActivityLogView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/roles-and-permissions"
-        element={
-          <AuthLayout>
-            <RolesPermissionsView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/bottom-nav-config"
-        element={
-          <AuthLayout>
-            <BottomNavConfigView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/notifications"
-        element={
-          <AuthLayout>
-            <NotificationsView />
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/admin-jobs"
-        element={
-          <AuthLayout>
-            <AdminJobsView />
-          </AuthLayout>
-        }
-      />
-
-      {/* Catch-all for unknown routes → placeholder */}
-      <Route
-        path="*"
-        element={
-          <AuthLayout>
-            <PlaceholderView tab={currentTab} onSelectTab={(tab) => setCurrentTab(tab)} />
-          </AuthLayout>
-        }
-      />
-    </Routes>
   );
 }
